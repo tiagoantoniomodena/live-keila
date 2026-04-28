@@ -67,14 +67,18 @@ div[data-testid="stExpander"] div[data-testid="stHorizontalBlock"] { align-items
 # ─────────────────────────────────────────────
 # CONEXÃO COM BANCO (Supabase / PostgreSQL)
 # ─────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# CONEXÃO COM BANCO (Supabase / PostgreSQL)
+# ─────────────────────────────────────────────
 def _nova_conexao():
     """Abre uma conexão fresca com o Supabase."""
-    return psycopg2.connect(
-        st.secrets["SUPABASE_DB_URL"],
-        cursor_factory=psycopg2.extras.RealDictCursor,
-        sslmode="require",
-        connect_timeout=10,
-    )
+    # Conecta usando apenas a URL dos Secrets (que já deve ter o sslmode)
+    conn = psycopg2.connect(st.secrets["SUPABASE_DB_URL"])
+    
+    # Configura para retornar os dados como dicionários (útil para o Pandas/Gráficos)
+    conn.cursor_factory = psycopg2.extras.RealDictCursor
+    
+    return conn
 
 
 def db():
