@@ -8,50 +8,38 @@ st.set_page_config(page_title="Sistema Keila", layout="wide")
 
 # --- CONEXÃO COM O BANCO DE DADOS ---
 def _nova_conexao():
-    # URL do Supabase (Pooler Mode - Porta 6543)
     url = "postgresql://postgres.filmiluacrjfmgpjsdts:t1980tlivedakeila@aws-1-us-east-1.pooler.supabase.com:6543/postgres"
-    
-    # Criamos a conexão
     conn = psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor)
-    
-    # ATENÇÃO: autocommit=True evita o erro "InFailedSqlTransaction" 
-    # pois cada comando é finalizado imediatamente.
     conn.autocommit = True
     return conn
 
 def db():
-    """Gerencia a conexão no estado da sessão."""
     if "_pg_conn" not in st.session_state or st.session_state["_pg_conn"].closed:
         st.session_state["_pg_conn"] = _nova_conexao()
     return st.session_state["_pg_conn"]
 
 def run(sql, params=()):
-    """Executa comandos sem retorno."""
     with db().cursor() as cur:
         cur.execute(sql, params)
 
 def query(sql, params=()):
-    """Executa comandos com retorno."""
     with db().cursor() as cur:
         cur.execute(sql, params)
         return cur.fetchall()
 
 # --- INICIALIZAÇÃO DAS TABELAS ---
 def inicializar_banco():
-    """Cria as tabelas uma por uma de forma segura."""
-    # Criamos cada tabela em um comando separado
     run("CREATE TABLE IF NOT EXISTS sacolas_ativas (cliente TEXT PRIMARY KEY, telefone TEXT, data_entrega DATE, itens TEXT, total_estimado DECIMAL(10,2));")
     run("CREATE TABLE IF NOT EXISTS estoque (produto TEXT PRIMARY KEY, quantidade INTEGER, preco DECIMAL(10,2));")
     run("CREATE TABLE IF NOT EXISTS vendas (id SERIAL PRIMARY KEY, cliente TEXT, data_venda TIMESTAMP DEFAULT CURRENT_TIMESTAMP, valor_total DECIMAL(10,2));")
 
 # --- INTERFACE PRINCIPAL ---
 def main():
-    # Inicializa o banco logo no início
     try:
         inicializar_banco()
     except Exception as e:
-        st.error(f"Erro ao acessar o banco de dados: {e}")
-        if st.button("Tentar Reconectar"):
+        st.error(f"Erro de conexão: {e}")
+        if st.button("Reconectar"):
             st.session_state.pop("_pg_conn", None)
             st.rerun()
         return
@@ -86,7 +74,8 @@ def main():
         if dados:
             for s in dados:
                 c1, c2 = st.columns([3, 1])
-                c1.write(f"**{s['cliente']}** | {s['itens']} | R$ {s['total_estimado']}")
+                # Usando o nome correto das chaves do dicionário
+                c1.write(f"**{s['cliente']}** | {s['itens']} | R$ {float(s['total_estimado'] or 0):.2f}")
                 if c2.button("Finalizar Venda", key=f"btn_{s['cliente']}"):
                     run("INSERT INTO vendas (cliente, valor_total) VALUES (%s, %s)", (s['cliente'], s['total_estimado']))
                     run("DELETE FROM sacolas_ativas WHERE cliente = %s", (s['cliente'],))
@@ -110,11 +99,12 @@ def main():
     # --- ABA: HISTÓRICO ---
     elif menu == "Histórico de Vendas":
         st.header("📈 Histórico")
-        vendas = query("SELECT * FROM vendas ORDER BY data_venda DESC")
-        if vendas:
-            st.dataframe(vendas)
-            total = sum(v['valor_total'] for v in vendas if v['valor_total'])
-            st.metric("Total Acumulado", f"R$ {total:,.2f}")
+        lista_vendas = query("SELECT * FROM vendas ORDER BY data_venda DESC")
+        if lista_vendas:
+            st.dataframe(lista_vendas)
+            # CORREÇÃO DO ERRO 's' ou 'v' IS NOT DEFINED:
+            total_valor = sum(float(venda['valor_total'] or 0) for venda in lista_vendas)
+            st.metric("Total Acumulado", f"R$ {total_valor:,.2f}")
         else:
             st.info("Nenhuma venda no histórico.")
 
