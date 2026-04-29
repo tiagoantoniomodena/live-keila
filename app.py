@@ -71,14 +71,13 @@ div[data-testid="stExpander"] div[data-testid="stHorizontalBlock"] { align-items
 # CONEXÃO COM BANCO (Supabase / PostgreSQL)
 # ─────────────────────────────────────────────
 def _nova_conexao():
-    """Abre uma conexão fresca com o Supabase."""
-    # Conecta usando apenas a URL dos Secrets (que já deve ter o sslmode)
+    """Abre uma conexão robusta via Pooling."""
     conn = psycopg2.connect(st.secrets["SUPABASE_DB_URL"])
-    
-    # Configura para retornar os dados como dicionários (útil para o Pandas/Gráficos)
+    # Importante para o modo Transaction do Supabase:
+    conn.autocommit = True 
     conn.cursor_factory = psycopg2.extras.RealDictCursor
-    
     return conn
+
 
 
 def db():
