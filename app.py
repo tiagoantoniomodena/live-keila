@@ -67,43 +67,45 @@ div[data-testid="stExpander"] div[data-testid="stHorizontalBlock"] { align-items
 # ─────────────────────────────────────────────
 # CONEXÃO COM BANCO (Supabase / PostgreSQL)
 # ─────────────────────────────────────────────
-def _nova_conexao():
-    """Abre uma conexão fresca com o Supabase."""
-    url = st.secrets["SUPABASE_DB_URL"]
-    # Garante que sslmode=require está na URL (psycopg2 não aceita como kwarg)
-    if "sslmode" not in url:
-        url += "?sslmode=require" if "?" not in url else "&sslmode=require"
-    return psycopg2.connect(
-        url,
-        cursor_factory=psycopg2.extras.RealDictCursor,
-    )
 
+def _nova_conexao():
+    """Abre uma conexão fresca com o Supabase usando a URL do Pooler."""
+    # O psycopg2 prefere receber apenas a URL quando usamos Pooling (porta 6543)
+    return psycopg2.connect(
+        st.secrets["SUPABASE_DB_URL"],
+        cursor_factory=psycopg2.extras.RealDictCursor
+    )
 
 def db():
     """
     Retorna um cursor sempre válido.
-    Usa st.session_state para guardar a conexão por sessão,
-    reconectando automaticamente se o Supabase fechar por idle.
+    Gerencia a conexão no session_state para evitar múltiplas conexões abertas.
     """
     conn = st.session_state.get("_pg_conn")
+    
+    # Se a conexão não existe ou caiu, reconecta
     if conn is None or conn.closed:
         conn = _nova_conexao()
+        # ESSENCIAL: autocommit=True é obrigatório para o modo Transaction do Supabase
         conn.autocommit = True
         st.session_state["_pg_conn"] = conn
     else:
+        # Testa se a conexão ainda está ativa
         try:
-            conn.cursor().execute("SELECT 1")
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
         except Exception:
             conn = _nova_conexao()
             conn.autocommit = True
             st.session_state["_pg_conn"] = conn
+            
     return conn.cursor()
 
-
 def run(sql, params=()):
-    """Executa query sem retorno."""
-    cur = db()
-    cur.execute(sql, params)
+    """Executa query sem retorno (INSERT, UPDATE, DELETE)."""
+    with db() as cur:
+        cur.execute(sql, params)
+
 
 
 def fetch(sql, params=()):
