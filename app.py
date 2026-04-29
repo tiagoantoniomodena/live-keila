@@ -75,8 +75,6 @@ def _nova_conexao():
     conn.cursor_factory = psycopg2.extras.RealDictCursor
     return conn
 
-    )
-
 def db():
     """
     Retorna um cursor sempre válido.
