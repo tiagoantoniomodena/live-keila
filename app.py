@@ -67,16 +67,16 @@ div[data-testid="stExpander"] div[data-testid="stHorizontalBlock"] { align-items
 # ─────────────────────────────────────────────
 # CONEXÃO COM BANCO (Supabase / PostgreSQL)
 # ─────────────────────────────────────────────
+# No seu arquivo app.py, por volta da linha 74:
+
 def _nova_conexao():
-    """Abre uma conexão fresca com o Supabase."""
-    url = st.secrets["SUPABASE_DB_URL"]
-    # Garante que sslmode=require está na URL (psycopg2 não aceita como kwarg)
-    if "sslmode" not in url:
-        url += "?sslmode=require" if "?" not in url else "&sslmode=require"
-    return psycopg2.connect(
-        url,
-        cursor_factory=psycopg2.extras.RealDictCursor,
-    )
+    # Cole a nova string aqui entre as aspas
+    url = "postgresql://postgres.filmiluacrjfmgpjsdts:t1980tlivedakeila@aws-1-us-east-1.pooler.supabase.com:6543/postgres"
+    
+    # É altamente recomendável adicionar o modo SSL para o Supabase:
+    # url += "?sslmode=require"
+    
+    return psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor)
 
 
 def db():
