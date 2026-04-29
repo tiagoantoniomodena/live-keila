@@ -67,17 +67,14 @@ div[data-testid="stExpander"] div[data-testid="stHorizontalBlock"] { align-items
 # ─────────────────────────────────────────────
 # CONEXÃO COM BANCO (Supabase / PostgreSQL)
 # ─────────────────────────────────────────────
-# ─────────────────────────────────────────────
-# CONEXÃO COM BANCO (Supabase / PostgreSQL)
-# ─────────────────────────────────────────────
 def _nova_conexao():
-    """Abre uma conexão robusta via Pooling."""
-    conn = psycopg2.connect(st.secrets["SUPABASE_DB_URL"])
-    # Importante para o modo Transaction do Supabase:
-    conn.autocommit = True 
-    conn.cursor_factory = psycopg2.extras.RealDictCursor
-    return conn
-
+    """Abre uma conexão fresca com o Supabase."""
+    return psycopg2.connect(
+        st.secrets["SUPABASE_DB_URL"],
+        cursor_factory=psycopg2.extras.RealDictCursor,
+        sslmode="require",
+        connect_timeout=10,
+    )
 
 
 def db():
