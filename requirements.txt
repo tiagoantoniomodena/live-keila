@@ -1,2 +1,6 @@
 streamlit
 psycopg2-binary
+pandas
+plotly
+Pillow
+requests
