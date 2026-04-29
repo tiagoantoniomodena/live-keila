@@ -69,11 +69,12 @@ div[data-testid="stExpander"] div[data-testid="stHorizontalBlock"] { align-items
 # ─────────────────────────────────────────────
 
 def _nova_conexao():
-    """Abre uma conexão fresca com o Supabase usando a URL do Pooler."""
-    # O psycopg2 prefere receber apenas a URL quando usamos Pooling (porta 6543)
-    return psycopg2.connect(
-        st.secrets["SUPABASE_DB_URL"],
-        cursor_factory=psycopg2.extras.RealDictCursor
+    """Abre uma conexão fresca com o Supabase usando apenas a URL."""
+    # Passamos APENAS a URL. O cursor_factory configuramos na linha seguinte.
+    conn = psycopg2.connect(st.secrets["SUPABASE_DB_URL"])
+    conn.cursor_factory = psycopg2.extras.RealDictCursor
+    return conn
+
     )
 
 def db():
