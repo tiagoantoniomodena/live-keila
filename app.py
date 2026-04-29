@@ -69,11 +69,14 @@ div[data-testid="stExpander"] div[data-testid="stHorizontalBlock"] { align-items
 # ─────────────────────────────────────────────
 
 def _nova_conexao():
-    """Abre uma conexão fresca com o Supabase usando apenas a URL."""
-    # Passamos APENAS a URL. O cursor_factory configuramos na linha seguinte.
-    conn = psycopg2.connect(st.secrets["SUPABASE_DB_URL"])
-    conn.cursor_factory = psycopg2.extras.RealDictCursor
-    return conn
+    """Conexão direta e robusta com o Supabase Pooler."""
+    # O endereço abaixo é o correto para o seu projeto no modo IPv4 (Pooler)
+    url = "postgresql://postgres.filmiluacrjfmgpjsdts:t1980livedakeila@://supabase.com"
+    
+    # Conecta usando a URL única
+    return psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor)
+
+
 
 def db():
     """
