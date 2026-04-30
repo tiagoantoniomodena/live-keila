@@ -43,7 +43,6 @@ div[data-testid="stExpander"] div[data-testid="stHorizontalBlock"] { align-items
 
 /* ── MELHORIA 3: selecionar texto ao focar ── */
 input[type="text"], input[type="number"] { cursor: text; }
-input[type="text"]:focus, input[type="number"]:focus { selection-background-color: #FF5252; }
 
 .badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; }
 .badge-ok   { background: rgba(0,230,118,0.15); color: #00E676; border: 1px solid #00E676; }
@@ -114,12 +113,38 @@ div[data-testid="stVerticalBlockBorderWrapper"] details summary {
 </style>
 
 <script>
-/* MELHORIA 3: selecionar todo o texto ao clicar em qualquer input */
-document.addEventListener('focusin', function(e) {
-    if (e.target.tagName === 'INPUT') {
-        setTimeout(() => e.target.select(), 50);
+/* Selecionar todo o texto ao focar — funciona em desktop, Android, iPad e iOS */
+(function () {
+    function selectAll(el) {
+        try {
+            /* iOS / Safari precisa do setSelectionRange após um tick */
+            if (typeof el.select === 'function') {
+                el.select();
+            }
+            if (typeof el.setSelectionRange === 'function') {
+                setTimeout(function () {
+                    el.setSelectionRange(0, el.value.length);
+                }, 0);
+            }
+        } catch (e) {}
     }
-}, true);
+
+    function bindInputs() {
+        document.querySelectorAll('input[type="text"], input[type="number"]').forEach(function (el) {
+            if (el._selectAllBound) return;
+            el._selectAllBound = true;
+            el.addEventListener('focus', function () { selectAll(el); });
+            /* touchstart cobre iOS onde focus não propaga direito */
+            el.addEventListener('touchstart', function () {
+                setTimeout(function () { selectAll(el); }, 100);
+            }, { passive: true });
+        });
+    }
+
+    /* Roda no carregamento e a cada mudança do DOM (Streamlit re-renderiza) */
+    bindInputs();
+    new MutationObserver(bindInputs).observe(document.body, { childList: true, subtree: true });
+})();
 </script>
 """, unsafe_allow_html=True)
 
@@ -207,96 +232,115 @@ sincronizar_clientes()
 # CUPOM
 # ─────────────────────────────────────────────
 def gerar_imagem_cupom(cliente, itens, frete, subtotal, total_geral, data_venda=""):
-    """Gera cupom com layout alinhado idêntico à imagem de referência."""
+    """Cupom com colunas fixas alinhadas: ITEM | QTD | UNIT | R$ | TOTAL"""
     BRANCO   = (255, 255, 255)
-    PRETO    = (0, 0, 0)
-    CINZA    = (130, 130, 130)
-    CINZA_L  = (200, 200, 200)
-    VERMELHO = (210, 50, 50)
+    PRETO    = (15,  15,  15)
+    CINZA    = (140, 140, 140)
+    CINZA_L  = (210, 210, 210)
+    VERMELHO = (200, 40,  40)
 
-    largura  = 680
-    MARG     = 48
-    LIN      = 34          # altura de cada linha de item
-    altura   = 340 + max(len(itens), 1) * LIN + (40 if frete > 0 else 0)
+    largura = 700
+    MARG    = 44
+    LIN     = 32
+    altura  = 360 + max(len(itens), 1) * LIN + (36 if frete > 0 else 0)
 
     img  = Image.new("RGB", (largura, altura), BRANCO)
     draw = ImageDraw.Draw(img)
 
-    # ── Fontes (Courier para visual de cupom) ──
-    font_titulo  = None
-    font_normal  = None
-    font_small   = None
-    font_bold    = None
-    for nome in ["C:\\Windows\\Fonts\\courbd.ttf", "C:\\Windows\\Fonts\\cour.ttf", "arial.ttf"]:
+    # ── Fonte: tenta Courier (mono) para alinhamento perfeito ──
+    F = {}
+    for caminho in [
+        "C:\\Windows\\Fonts\\cour.ttf",
+        "C:\\Windows\\Fonts\\courbd.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+    ]:
         try:
-            font_titulo = ImageFont.truetype(nome, 22)
-            font_bold   = ImageFont.truetype(nome, 20)
-            font_normal = ImageFont.truetype(nome, 18)
-            font_small  = ImageFont.truetype(nome, 16)
+            F["titulo"] = ImageFont.truetype(caminho, 20)
+            F["bold"]   = ImageFont.truetype(caminho, 18)
+            F["norm"]   = ImageFont.truetype(caminho, 16)
+            F["small"]  = ImageFont.truetype(caminho, 14)
             break
         except Exception:
             continue
-    if not font_normal:
-        font_titulo = font_bold = font_normal = font_small = ImageFont.load_default()
+    if "norm" not in F:
+        fb = ImageFont.load_default()
+        F = {"titulo": fb, "bold": fb, "norm": fb, "small": fb}
 
-    # ── Colunas de itens (posições X fixas) ──
-    COL_ITEM  = MARG           # Nome do produto
-    COL_QTD   = MARG + 260    # Quantidade
-    COL_UNIT  = MARG + 320    # Preço unitário
-    COL_RS    = MARG + 450    # "R$"
-    COL_TOT   = largura - MARG  # Total (alinhado à direita)
+    # ── Posições X das colunas (todas fixas) ──
+    #  ITEM começa em MARG
+    #  QTD  começa em X_QTD   (alinha à esquerda)
+    #  UNIT termina em X_UNIT  (alinha à direita — valor)
+    #  RS   começa em X_RS     (texto "R$" fixo)
+    #  TOT  termina em X_TOT   (alinha à direita — valor)
+    X_ITEM = MARG
+    X_QTD  = MARG + 258   # início da coluna QTD
+    X_UNIT = MARG + 400   # borda direita da coluna UNIT (valor alinha aqui)
+    X_RS   = MARG + 420   # início do "R$"
+    X_TOT  = largura - MARG  # borda direita da coluna TOTAL
 
-    def txt_r(x, y, texto, fonte, cor=PRETO):
-        """Escreve texto alinhado à direita a partir de x."""
-        bb = draw.textbbox((0, 0), texto, font=fonte)
+    def esq(x, y, txt, f, cor=PRETO):
+        draw.text((x, y), txt, cor, font=f)
+
+    def dir_(x, y, txt, f, cor=PRETO):
+        """Escreve alinhado à direita terminando em x."""
+        bb = draw.textbbox((0, 0), txt, font=f)
         w  = bb[2] - bb[0]
-        draw.text((x - w, y), texto, cor, font=fonte)
+        draw.text((x - w, y), txt, cor, font=f)
 
-    y = 40
+    def centro(x, y, txt, f, cor=PRETO):
+        bb = draw.textbbox((0, 0), txt, font=f)
+        w  = bb[2] - bb[0]
+        draw.text((x - w // 2, y), txt, cor, font=f)
 
-    # Título centralizado
+    y = 38
+
+    # ── Título ──
     titulo = "--- LIVE DA KEILA ---"
-    bb = draw.textbbox((0, 0), titulo, font=font_titulo)
-    tw = bb[2] - bb[0]
-    draw.text(((largura - tw) // 2, y), titulo, PRETO, font=font_titulo); y += 44
+    bb = draw.textbbox((0, 0), titulo, font=F["titulo"])
+    draw.text(((largura - (bb[2]-bb[0])) // 2, y), titulo, PRETO, font=F["titulo"])
+    y += 42
 
-    # Cliente e data
-    draw.text((MARG, y), f"CLIENTE: {cliente.upper()}", PRETO,  font=font_bold);  y += 30
-    draw.text((MARG, y), f"DATA:    {data_venda.split(' ')[0]}", CINZA, font=font_normal); y += 40
+    # ── Cliente / Data ──
+    esq(MARG, y, f"CLIENTE: {cliente.upper()}", F["bold"]); y += 28
+    esq(MARG, y, f"DATA:    {data_venda.split(' ')[0]}", F["norm"], CINZA); y += 38
 
-    # Cabeçalho da tabela
-    draw.text((COL_ITEM, y), "ITEM",  PRETO, font=font_bold)
-    draw.text((COL_QTD,  y), "QTD",  PRETO, font=font_bold)
-    draw.text((COL_UNIT, y), "UNIT", PRETO, font=font_bold)
-    txt_r(COL_TOT, y, "TOTAL", font_bold); y += 26
+    # ── Cabeçalho da tabela ──
+    esq(X_ITEM, y, "ITEM",  F["bold"])
+    esq(X_QTD,  y, "QTD",  F["bold"])
+    dir_(X_UNIT, y, "UNIT", F["bold"])   # alinha à direita da coluna UNIT
+    dir_(X_TOT,  y, "TOTAL", F["bold"])  # alinha à direita da coluna TOTAL
+    y += 24
 
-    draw.line((MARG, y, largura - MARG, y), CINZA_L, 1); y += 14
+    draw.line((MARG, y, largura - MARG, y), CINZA_L, 1); y += 12
 
-    # Linhas de itens
+    # ── Linhas de itens ──
     for i in itens:
-        u = float(i["preco"]); q = int(i["qtd"]); s = u * q
-        nome_curto = i["nome"][:26]
-        draw.text((COL_ITEM, y), nome_curto,      PRETO, font=font_normal)
-        draw.text((COL_QTD,  y), str(q),           PRETO, font=font_normal)
-        txt_r(COL_UNIT + 80, y, f"{u:.2f}",        font_normal)
-        draw.text((COL_RS,   y), "R$",              CINZA, font=font_small)
-        txt_r(COL_TOT,  y, f"{s:.2f}",             font_normal)
+        u = float(i["preco"])
+        q = int(i["qtd"])
+        s = u * q
+        nome_curto = i["nome"][:28]
+
+        esq( X_ITEM, y, nome_curto,      F["norm"])
+        esq( X_QTD,  y, str(q),          F["norm"])
+        dir_(X_UNIT, y, f"{u:.2f}",      F["norm"])   # valor unitário → alinha com cabeçalho UNIT
+        esq( X_RS,   y, "R$",            F["small"], CINZA)
+        dir_(X_TOT,  y, f"{s:.2f}",      F["norm"])   # total → alinha com cabeçalho TOTAL
         y += LIN
 
-    draw.line((MARG, y + 6, largura - MARG, y + 6), CINZA_L, 1); y += 28
+    draw.line((MARG, y + 4, largura - MARG, y + 4), CINZA_L, 1); y += 24
 
-    # Totais
+    # ── Rodapé ──
     qtd_tot = sum(int(i["qtd"]) for i in itens)
-    draw.text((MARG, y), f"TOTAL ITENS: {qtd_tot}", PRETO, font=font_normal); y += 30
-    draw.text((MARG, y), f"SUBTOTAL: R$ {subtotal:.2f}", PRETO, font=font_normal); y += 30
+    esq(MARG, y, f"TOTAL ITENS: {qtd_tot}",        F["norm"]); y += 28
+    esq(MARG, y, f"SUBTOTAL: R$ {subtotal:.2f}",   F["norm"]); y += 28
     if frete > 0:
-        draw.text((MARG, y), f"FRETE: R$ {frete:.2f}", PRETO, font=font_normal); y += 30
-
-    y += 10
-    draw.text((MARG, y), f"TOTAL GERAL: R$ {total_geral:.2f}", VERMELHO, font=font_bold)
+        esq(MARG, y, f"FRETE: R$ {frete:.2f}",     F["norm"]); y += 28
+    y += 8
+    esq(MARG, y, f"TOTAL GERAL: R$ {total_geral:.2f}", F["bold"], VERMELHO)
 
     buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=96)
+    img.save(buf, format="JPEG", quality=97)
     return buf.getvalue()
 
 
@@ -483,31 +527,8 @@ if aba_selecionada == "🛍️ Monitor de Sacolas":
                 """, unsafe_allow_html=True)
 
                 with st.expander("▼ Ver detalhes / editar", expanded=expandido):
-
-                        # Editar nome e telefone
-                        hi1, hi2, hi3 = st.columns([2, 2, 1])
-                        novo_nome_cli = hi1.text_input(
-                            "👤 Nome", value=cli_id, key=f"name_edit_{cli_id}",
-                            label_visibility="collapsed", placeholder="Nome do cliente"
-                        ).strip().lower()
-                        novo_tel = hi2.text_input(
-                            "📞 Tel", value=tel_row, key=f"tel_sac_{cli_id}",
-                            label_visibility="collapsed", placeholder="Telefone"
-                        )
-                        if hi3.button("💾", key=f"save_info_{cli_id}", use_container_width=True, help="Salvar nome/telefone"):
-                            if novo_nome_cli != cli_id:
-                                run("""INSERT INTO sacolas_ativas (cliente,telefone,itens,ultima_alteracao)
-                                    VALUES (%s,%s,%s,%s)
-                                    ON CONFLICT (cliente) DO UPDATE SET
-                                        telefone=EXCLUDED.telefone, itens=EXCLUDED.itens,
-                                        ultima_alteracao=EXCLUDED.ultima_alteracao""",
-                                    (novo_nome_cli, novo_tel, row["itens"], datetime.now().isoformat()))
-                                run("DELETE FROM sacolas_ativas WHERE cliente=%s", (cli_id,))
-                            else:
-                                run("UPDATE sacolas_ativas SET telefone=%s, ultima_alteracao=%s WHERE cliente=%s",
-                                    (novo_tel, datetime.now().isoformat(), cli_id))
-                            st.session_state.sacola_expandida = novo_nome_cli
-                            st.rerun()
+                        # variável novo_tel usada no botão finalizar
+                        novo_tel = tel_row
 
                         # Cabeçalho de colunas
                         COLS = [3.5, 1.5, 1.2, 0.6, 0.6]
