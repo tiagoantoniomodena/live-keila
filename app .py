@@ -49,46 +49,7 @@ input[type="text"]:focus, input[type="number"]:focus { selection-background-colo
 .badge-ok   { background: rgba(0,230,118,0.15); color: #00E676; border: 1px solid #00E676; }
 .badge-novo { background: rgba(255,82,82,0.15);  color: #FF5252; border: 1px solid #FF5252; }
 
-/* ── MELHORIA 5: card de sacola encapsulado ── */
-.sacola-card {
-    background: #0E1420;
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 14px;
-    padding: 16px 18px;
-    margin-bottom: 12px;
-    transition: border-color 0.2s;
-}
-.sacola-card:hover { border-color: rgba(0,230,118,0.3); }
-.sacola-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 10px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
-}
-.sacola-nome {
-    font-size: 1rem;
-    font-weight: 700;
-    color: #F9FAFB;
-    letter-spacing: 0.02em;
-}
-.sacola-tel {
-    font-size: 0.78rem;
-    color: #6B7280;
-    margin-top: 2px;
-}
-.sacola-total {
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: #00E676;
-    text-align: right;
-}
-.sacola-itens-count {
-    font-size: 0.72rem;
-    color: #9CA3AF;
-    text-align: right;
-}
+/* ── Card de sacola — tudo dentro de um único retângulo ── */
 .col-header {
     font-size: 0.68rem;
     font-weight: 700;
@@ -97,6 +58,46 @@ input[type="text"]:focus, input[type="number"]:focus { selection-background-colo
     letter-spacing: 0.07em;
     padding: 0 0 4px 0;
 }
+/* Faz o st.container(border=True) da sacola ter visual de card escuro */
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    background: #0D1117 !important;
+    border-color: rgba(255,255,255,0.09) !important;
+    border-radius: 14px !important;
+    transition: border-color 0.2s;
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:hover {
+    border-color: rgba(0,230,118,0.28) !important;
+}
+/* Remove borda dupla dos containers internos (novo item, etc) */
+div[data-testid="stVerticalBlockBorderWrapper"]
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    background: #161B27 !important;
+    border-color: rgba(255,255,255,0.06) !important;
+    border-radius: 8px !important;
+}
+/* Expander dentro do card — sem borda extra */
+div[data-testid="stVerticalBlockBorderWrapper"] details {
+    border: none !important;
+    background: transparent !important;
+}
+div[data-testid="stVerticalBlockBorderWrapper"] details summary {
+    border-top: 1px solid rgba(255,255,255,0.06) !important;
+    border-radius: 0 !important;
+    padding: 8px 4px !important;
+}
+/* Cabeçalho do card dentro do container */
+.sacola-header-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 0 10px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    margin-bottom: 6px;
+}
+.sacola-nome { font-size:1rem; font-weight:700; color:#F9FAFB; letter-spacing:0.02em; }
+.sacola-tel  { font-size:0.78rem; color:#6B7280; margin-top:2px; }
+.sacola-total       { font-size:1.1rem; font-weight:700; color:#00E676; text-align:right; }
+.sacola-itens-count { font-size:0.72rem; color:#9CA3AF; text-align:right; }
 
 /* KPI cards */
 .kpi-card { background: #111827; border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; padding: 18px 20px; margin-bottom: 8px; }
@@ -206,31 +207,97 @@ sincronizar_clientes()
 # CUPOM
 # ─────────────────────────────────────────────
 def gerar_imagem_cupom(cliente, itens, frete, subtotal, total_geral, data_venda=""):
-    largura = 700
-    altura = 480 + (len(itens) * 35)
-    img = Image.new("RGB", (largura, altura), color=(255,255,255))
+    """Gera cupom com layout alinhado idêntico à imagem de referência."""
+    BRANCO   = (255, 255, 255)
+    PRETO    = (0, 0, 0)
+    CINZA    = (130, 130, 130)
+    CINZA_L  = (200, 200, 200)
+    VERMELHO = (210, 50, 50)
+
+    largura  = 680
+    MARG     = 48
+    LIN      = 34          # altura de cada linha de item
+    altura   = 340 + max(len(itens), 1) * LIN + (40 if frete > 0 else 0)
+
+    img  = Image.new("RGB", (largura, altura), BRANCO)
     draw = ImageDraw.Draw(img)
-    font_p = None
-    for c in ["C:\\Windows\\Fonts\\cour.ttf", "arial.ttf"]:
-        try: font_p = ImageFont.truetype(c, 20); break
-        except: continue
-    if not font_p: font_p = ImageFont.load_default()
-    y, m = 40, 40
-    draw.text((largura/2-100, y), "--- LIVE DA KEILA ---", (0,0,0), font=font_p); y+=50
-    draw.text((m, y), f"CLIENTE: {cliente.upper()}", (0,0,0), font=font_p); y+=35
-    draw.text((m, y), f"DATA: {data_venda.split(' ')[0]}", (100,100,100), font=font_p); y+=40
-    draw.text((m, y), f"{'ITEM':<20} {'QTD':<6} {'UNIT':<12} {'TOTAL':>10}", (0,0,0), font=font_p); y+=25
-    draw.line((m, y, largura-m, y), (200,200,200), 2); y+=25
+
+    # ── Fontes (Courier para visual de cupom) ──
+    font_titulo  = None
+    font_normal  = None
+    font_small   = None
+    font_bold    = None
+    for nome in ["C:\\Windows\\Fonts\\courbd.ttf", "C:\\Windows\\Fonts\\cour.ttf", "arial.ttf"]:
+        try:
+            font_titulo = ImageFont.truetype(nome, 22)
+            font_bold   = ImageFont.truetype(nome, 20)
+            font_normal = ImageFont.truetype(nome, 18)
+            font_small  = ImageFont.truetype(nome, 16)
+            break
+        except Exception:
+            continue
+    if not font_normal:
+        font_titulo = font_bold = font_normal = font_small = ImageFont.load_default()
+
+    # ── Colunas de itens (posições X fixas) ──
+    COL_ITEM  = MARG           # Nome do produto
+    COL_QTD   = MARG + 260    # Quantidade
+    COL_UNIT  = MARG + 320    # Preço unitário
+    COL_RS    = MARG + 450    # "R$"
+    COL_TOT   = largura - MARG  # Total (alinhado à direita)
+
+    def txt_r(x, y, texto, fonte, cor=PRETO):
+        """Escreve texto alinhado à direita a partir de x."""
+        bb = draw.textbbox((0, 0), texto, font=fonte)
+        w  = bb[2] - bb[0]
+        draw.text((x - w, y), texto, cor, font=fonte)
+
+    y = 40
+
+    # Título centralizado
+    titulo = "--- LIVE DA KEILA ---"
+    bb = draw.textbbox((0, 0), titulo, font=font_titulo)
+    tw = bb[2] - bb[0]
+    draw.text(((largura - tw) // 2, y), titulo, PRETO, font=font_titulo); y += 44
+
+    # Cliente e data
+    draw.text((MARG, y), f"CLIENTE: {cliente.upper()}", PRETO,  font=font_bold);  y += 30
+    draw.text((MARG, y), f"DATA:    {data_venda.split(' ')[0]}", CINZA, font=font_normal); y += 40
+
+    # Cabeçalho da tabela
+    draw.text((COL_ITEM, y), "ITEM",  PRETO, font=font_bold)
+    draw.text((COL_QTD,  y), "QTD",  PRETO, font=font_bold)
+    draw.text((COL_UNIT, y), "UNIT", PRETO, font=font_bold)
+    txt_r(COL_TOT, y, "TOTAL", font_bold); y += 26
+
+    draw.line((MARG, y, largura - MARG, y), CINZA_L, 1); y += 14
+
+    # Linhas de itens
     for i in itens:
-        u, q = float(i["preco"]), int(i["qtd"]); s = u*q
-        draw.text((m,y), f"{i['nome'][:18]:<20} {q:<6} {u:<12.2f} R$ {s:>8.2f}", (0,0,0), font=font_p); y+=35
-    draw.line((m, y+10, largura-m, y+10), (200,200,200), 2); y+=45
+        u = float(i["preco"]); q = int(i["qtd"]); s = u * q
+        nome_curto = i["nome"][:26]
+        draw.text((COL_ITEM, y), nome_curto,      PRETO, font=font_normal)
+        draw.text((COL_QTD,  y), str(q),           PRETO, font=font_normal)
+        txt_r(COL_UNIT + 80, y, f"{u:.2f}",        font_normal)
+        draw.text((COL_RS,   y), "R$",              CINZA, font=font_small)
+        txt_r(COL_TOT,  y, f"{s:.2f}",             font_normal)
+        y += LIN
+
+    draw.line((MARG, y + 6, largura - MARG, y + 6), CINZA_L, 1); y += 28
+
+    # Totais
     qtd_tot = sum(int(i["qtd"]) for i in itens)
-    draw.text((m,y), f"TOTAL ITENS: {qtd_tot}", (0,0,0), font=font_p); y+=35
-    draw.text((m,y), f"SUBTOTAL: R$ {subtotal:.2f}", (0,0,0), font=font_p); y+=35
-    if frete > 0: draw.text((m,y), f"FRETE: R$ {frete:.2f}", (0,0,0), font=font_p); y+=35
-    draw.text((m, y+15), f"TOTAL GERAL: R$ {total_geral:.2f}", (255,82,82), font=font_p)
-    buf = io.BytesIO(); img.save(buf, format="JPEG", quality=95); return buf.getvalue()
+    draw.text((MARG, y), f"TOTAL ITENS: {qtd_tot}", PRETO, font=font_normal); y += 30
+    draw.text((MARG, y), f"SUBTOTAL: R$ {subtotal:.2f}", PRETO, font=font_normal); y += 30
+    if frete > 0:
+        draw.text((MARG, y), f"FRETE: R$ {frete:.2f}", PRETO, font=font_normal); y += 30
+
+    y += 10
+    draw.text((MARG, y), f"TOTAL GERAL: R$ {total_geral:.2f}", VERMELHO, font=font_bold)
+
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=96)
+    return buf.getvalue()
 
 
 # ─────────────────────────────────────────────
@@ -398,10 +465,12 @@ if aba_selecionada == "🛍️ Monitor de Sacolas":
             tot_sac   = sum(float(i["qtd"]) * float(i["preco"]) for i in its)
             qtd_itens = sum(int(i["qtd"]) for i in its)
 
-            # ── MELHORIA 5: card encapsulado ──
-            st.markdown(f"""
-            <div class="sacola-card">
-                <div class="sacola-header">
+            # ── Card único: cabeçalho + detalhes no mesmo retângulo ──
+            expandido = st.session_state.sacola_expandida == cli_id
+            with st.container(border=True):
+                # Cabeçalho sempre visível
+                st.markdown(f"""
+                <div class="sacola-header-inner">
                     <div>
                         <div class="sacola-nome">🛍️ {cli_id.upper()}</div>
                         <div class="sacola-tel">📞 {tel_row if tel_row else 'Sem telefone'}</div>
@@ -411,125 +480,117 @@ if aba_selecionada == "🛍️ Monitor de Sacolas":
                         <div class="sacola-itens-count">{qtd_itens} item(ns)</div>
                     </div>
                 </div>
-            </div>
-            """, unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
 
-            # Usa expander apenas para o conteúdo interno
-            expandido = st.session_state.sacola_expandida == cli_id
-            with st.expander("▼ Ver detalhes / editar", expanded=expandido):
+                with st.expander("▼ Ver detalhes / editar", expanded=expandido):
 
-                # Editar nome e telefone
-                hi1, hi2, hi3 = st.columns([2, 2, 1])
-                novo_nome_cli = hi1.text_input(
-                    "👤 Nome", value=cli_id, key=f"name_edit_{cli_id}",
-                    label_visibility="collapsed", placeholder="Nome do cliente"
-                ).strip().lower()
-                novo_tel = hi2.text_input(
-                    "📞 Tel", value=tel_row, key=f"tel_sac_{cli_id}",
-                    label_visibility="collapsed", placeholder="Telefone"
-                )
-                if hi3.button("💾", key=f"save_info_{cli_id}", use_container_width=True, help="Salvar nome/telefone"):
-                    if novo_nome_cli != cli_id:
-                        run("""INSERT INTO sacolas_ativas (cliente,telefone,itens,ultima_alteracao)
-                            VALUES (%s,%s,%s,%s)
-                            ON CONFLICT (cliente) DO UPDATE SET
-                                telefone=EXCLUDED.telefone, itens=EXCLUDED.itens,
-                                ultima_alteracao=EXCLUDED.ultima_alteracao""",
-                            (novo_nome_cli, novo_tel, row["itens"], datetime.now().isoformat()))
-                        run("DELETE FROM sacolas_ativas WHERE cliente=%s", (cli_id,))
-                    else:
-                        run("UPDATE sacolas_ativas SET telefone=%s, ultima_alteracao=%s WHERE cliente=%s",
-                            (novo_tel, datetime.now().isoformat(), cli_id))
-                    st.session_state.sacola_expandida = novo_nome_cli
-                    st.rerun()
-
-                # ── MELHORIA 2: cabeçalho de colunas alinhado ──
-                COLS = [3.5, 1.5, 1.2, 0.6, 0.6]
-                hc1, hc2, hc3, hc4, hc5 = st.columns(COLS)
-                hc1.markdown('<div class="col-header">Produto</div>', unsafe_allow_html=True)
-                hc2.markdown('<div class="col-header">Qtd × R$</div>', unsafe_allow_html=True)
-                hc3.markdown('<div class="col-header">Subtotal</div>', unsafe_allow_html=True)
-
-                # Linhas de itens
-                for idx, i in enumerate(its):
-                    item_key = f"sac_{cli_id}_{idx}"
-
-                    if st.session_state.edit_sacola_item == item_key:
-                        ec1, ec2, ec3, ec4, ec5 = st.columns(COLS)
-                        n_n = ec1.text_input("Item", i["nome"],          key=f"en_{item_key}", label_visibility="collapsed")
-                        n_q = ec2.number_input("Qtd", value=int(i["qtd"]),    key=f"eq_{item_key}", label_visibility="collapsed")
-                        n_p = ec3.number_input("R$",  value=float(i["preco"]), key=f"ep_{item_key}", label_visibility="collapsed", step=0.5)
-                        if ec4.button("💾", key=f"sv_{item_key}", use_container_width=True, help="Salvar"):
-                            its[idx] = {"nome": n_n, "qtd": n_q, "preco": n_p}
-                            run("UPDATE sacolas_ativas SET itens=%s, ultima_alteracao=%s WHERE cliente=%s",
-                                (json.dumps(its), datetime.now().isoformat(), cli_id))
-                            st.session_state.edit_sacola_item = None
-                            st.session_state.sacola_expandida = cli_id
+                        # Editar nome e telefone
+                        hi1, hi2, hi3 = st.columns([2, 2, 1])
+                        novo_nome_cli = hi1.text_input(
+                            "👤 Nome", value=cli_id, key=f"name_edit_{cli_id}",
+                            label_visibility="collapsed", placeholder="Nome do cliente"
+                        ).strip().lower()
+                        novo_tel = hi2.text_input(
+                            "📞 Tel", value=tel_row, key=f"tel_sac_{cli_id}",
+                            label_visibility="collapsed", placeholder="Telefone"
+                        )
+                        if hi3.button("💾", key=f"save_info_{cli_id}", use_container_width=True, help="Salvar nome/telefone"):
+                            if novo_nome_cli != cli_id:
+                                run("""INSERT INTO sacolas_ativas (cliente,telefone,itens,ultima_alteracao)
+                                    VALUES (%s,%s,%s,%s)
+                                    ON CONFLICT (cliente) DO UPDATE SET
+                                        telefone=EXCLUDED.telefone, itens=EXCLUDED.itens,
+                                        ultima_alteracao=EXCLUDED.ultima_alteracao""",
+                                    (novo_nome_cli, novo_tel, row["itens"], datetime.now().isoformat()))
+                                run("DELETE FROM sacolas_ativas WHERE cliente=%s", (cli_id,))
+                            else:
+                                run("UPDATE sacolas_ativas SET telefone=%s, ultima_alteracao=%s WHERE cliente=%s",
+                                    (novo_tel, datetime.now().isoformat(), cli_id))
+                            st.session_state.sacola_expandida = novo_nome_cli
                             st.rerun()
-                        if ec5.button("✕", key=f"cx_{item_key}", use_container_width=True, help="Cancelar"):
-                            st.session_state.edit_sacola_item = None
-                            st.rerun()
-                    else:
-                        subtotal_item = float(i["qtd"]) * float(i["preco"])
-                        vc1, vc2, vc3, vc4, vc5 = st.columns(COLS)
-                        vc1.markdown(
-                            f'<p style="margin:0;padding:5px 0;font-size:0.85rem;font-weight:600;color:#E5E7EB;">{i["nome"]}</p>',
-                            unsafe_allow_html=True)
-                        vc2.markdown(
-                            f'<p style="margin:0;padding:5px 0;font-size:0.82rem;color:#9CA3AF;">{int(i["qtd"])} × R$ {float(i["preco"]):.2f}</p>',
-                            unsafe_allow_html=True)
-                        vc3.markdown(
-                            f'<p style="margin:0;padding:5px 0;font-size:0.85rem;font-weight:700;color:#fff;">R$ {subtotal_item:.2f}</p>',
-                            unsafe_allow_html=True)
-                        # MELHORIA 2: botões alinhados horizontalmente na mesma linha
-                        if vc4.button("✏️", key=f"ed_{item_key}", use_container_width=True, help="Editar item"):
-                            st.session_state.edit_sacola_item = item_key
-                            st.session_state.sacola_expandida = cli_id
-                            st.rerun()
-                        if vc5.button("🗑️", key=f"rm_{item_key}", use_container_width=True, help="Remover item"):
-                            its_temp = list(its); its_temp.pop(idx)
-                            confirmar_exclusao("item_sacola", cli_id, its_temp)
 
-                # Adicionar novo item
-                if st.session_state.novo_item_sacola == cli_id:
-                    with st.container(border=True):
-                        st.caption("NOVO ITEM")
-                        nc1, nc2, nc3 = st.columns([2.5, 1, 1])
-                        novo_n = nc1.text_input("Produto", key=f"new_n_{cli_id}", placeholder="Nome do produto")
-                        novo_q = nc2.number_input("Qtd", 1, key=f"new_q_{cli_id}")
-                        novo_p = nc3.number_input("R$", 0.0, step=0.5, key=f"new_p_{cli_id}")
-                        bc1, bc2 = st.columns(2)
-                        if bc1.button("✅ Confirmar", key=f"cn_{cli_id}", use_container_width=True, type="primary"):
-                            if novo_n:
-                                its.append({"nome": novo_n, "qtd": novo_q, "preco": novo_p})
-                                # MELHORIA 4: atualiza timestamp → sobe para o topo
-                                run("UPDATE sacolas_ativas SET itens=%s, ultima_alteracao=%s WHERE cliente=%s",
-                                    (json.dumps(its), datetime.now().isoformat(), cli_id))
-                                st.session_state.novo_item_sacola = None
+                        # Cabeçalho de colunas
+                        COLS = [3.5, 1.5, 1.2, 0.6, 0.6]
+                        hc1, hc2, hc3, hc4, hc5 = st.columns(COLS)
+                        hc1.markdown('<div class="col-header">Produto</div>', unsafe_allow_html=True)
+                        hc2.markdown('<div class="col-header">Qtd × R$</div>', unsafe_allow_html=True)
+                        hc3.markdown('<div class="col-header">Subtotal</div>', unsafe_allow_html=True)
+
+                        # Linhas de itens
+                        for idx, i in enumerate(its):
+                            item_key = f"sac_{cli_id}_{idx}"
+
+                            if st.session_state.edit_sacola_item == item_key:
+                                ec1, ec2, ec3, ec4, ec5 = st.columns(COLS)
+                                n_n = ec1.text_input("Item", i["nome"],           key=f"en_{item_key}", label_visibility="collapsed")
+                                n_q = ec2.number_input("Qtd", value=int(i["qtd"]),     key=f"eq_{item_key}", label_visibility="collapsed")
+                                n_p = ec3.number_input("R$",  value=float(i["preco"]),  key=f"ep_{item_key}", label_visibility="collapsed", step=0.5)
+                                if ec4.button("💾", key=f"sv_{item_key}", use_container_width=True, help="Salvar"):
+                                    its[idx] = {"nome": n_n, "qtd": n_q, "preco": n_p}
+                                    run("UPDATE sacolas_ativas SET itens=%s, ultima_alteracao=%s WHERE cliente=%s",
+                                        (json.dumps(its), datetime.now().isoformat(), cli_id))
+                                    st.session_state.edit_sacola_item = None
+                                    st.session_state.sacola_expandida = cli_id
+                                    st.rerun()
+                                if ec5.button("✕", key=f"cx_{item_key}", use_container_width=True, help="Cancelar"):
+                                    st.session_state.edit_sacola_item = None
+                                    st.rerun()
+                            else:
+                                subtotal_item = float(i["qtd"]) * float(i["preco"])
+                                vc1, vc2, vc3, vc4, vc5 = st.columns(COLS)
+                                vc1.markdown(
+                                    f'<p style="margin:0;padding:5px 0;font-size:0.85rem;font-weight:600;color:#E5E7EB;">{i["nome"]}</p>',
+                                    unsafe_allow_html=True)
+                                vc2.markdown(
+                                    f'<p style="margin:0;padding:5px 0;font-size:0.82rem;color:#9CA3AF;">{int(i["qtd"])} × R$ {float(i["preco"]):.2f}</p>',
+                                    unsafe_allow_html=True)
+                                vc3.markdown(
+                                    f'<p style="margin:0;padding:5px 0;font-size:0.85rem;font-weight:700;color:#fff;">R$ {subtotal_item:.2f}</p>',
+                                    unsafe_allow_html=True)
+                                if vc4.button("✏️", key=f"ed_{item_key}", use_container_width=True, help="Editar item"):
+                                    st.session_state.edit_sacola_item = item_key
+                                    st.session_state.sacola_expandida = cli_id
+                                    st.rerun()
+                                if vc5.button("🗑️", key=f"rm_{item_key}", use_container_width=True, help="Remover item"):
+                                    its_temp = list(its); its_temp.pop(idx)
+                                    confirmar_exclusao("item_sacola", cli_id, its_temp)
+
+                        # Adicionar novo item
+                        if st.session_state.novo_item_sacola == cli_id:
+                            with st.container(border=True):
+                                st.caption("NOVO ITEM")
+                                nc1, nc2, nc3 = st.columns([2.5, 1, 1])
+                                novo_n = nc1.text_input("Produto", key=f"new_n_{cli_id}", placeholder="Nome do produto")
+                                novo_q = nc2.number_input("Qtd", 1, key=f"new_q_{cli_id}")
+                                novo_p = nc3.number_input("R$", 0.0, step=0.5, key=f"new_p_{cli_id}")
+                                bc1, bc2 = st.columns(2)
+                                if bc1.button("✅ Confirmar", key=f"cn_{cli_id}", use_container_width=True, type="primary"):
+                                    if novo_n:
+                                        its.append({"nome": novo_n, "qtd": novo_q, "preco": novo_p})
+                                        run("UPDATE sacolas_ativas SET itens=%s, ultima_alteracao=%s WHERE cliente=%s",
+                                            (json.dumps(its), datetime.now().isoformat(), cli_id))
+                                        st.session_state.novo_item_sacola = None
+                                        st.session_state.sacola_expandida = cli_id
+                                        st.rerun()
+                                if bc2.button("❌ Cancelar", key=f"cc_{cli_id}", use_container_width=True):
+                                    st.session_state.novo_item_sacola = None
+                                    st.rerun()
+                        else:
+                            if st.button("➕ Adicionar Item", key=f"bt_a_{cli_id}", use_container_width=True):
+                                st.session_state.novo_item_sacola = cli_id
                                 st.session_state.sacola_expandida = cli_id
                                 st.rerun()
-                        if bc2.button("❌ Cancelar", key=f"cc_{cli_id}", use_container_width=True):
-                            st.session_state.novo_item_sacola = None
-                            st.rerun()
-                else:
-                    if st.button("➕ Adicionar Item", key=f"bt_a_{cli_id}", use_container_width=True):
-                        st.session_state.novo_item_sacola = cli_id
-                        st.session_state.sacola_expandida = cli_id
-                        st.rerun()
 
-                st.divider()
+                        st.divider()
 
-                # Rodapé da sacola: total + finalizar
-                rf1, rf2, rf3 = st.columns([1.2, 1, 1.8])
-                rf1.markdown(
-                    f'<div style="font-size:0.82rem;color:#9CA3AF;">{qtd_itens} item(ns)</div>'
-                    f'<div style="font-size:1.1rem;font-weight:700;color:#00E676;">R$ {tot_sac:.2f}</div>',
-                    unsafe_allow_html=True)
-                if rf3.button("✅ FINALIZAR COMPRA", key=f"f_{cli_id}", use_container_width=True, type="primary"):
-                    confirmar_finalizar_compra(cli_id, novo_tel, its, tot_sac)
-
-            # Linha separadora sutil entre cards
-            st.markdown('<div style="height:4px;"></div>', unsafe_allow_html=True)
+                        # Rodapé: total + finalizar
+                        rf1, rf2, rf3 = st.columns([1.2, 1, 1.8])
+                        rf1.markdown(
+                            f'<div style="font-size:0.82rem;color:#9CA3AF;">{qtd_itens} item(ns)</div>'
+                            f'<div style="font-size:1.1rem;font-weight:700;color:#00E676;">R$ {tot_sac:.2f}</div>',
+                            unsafe_allow_html=True)
+                        if rf3.button("✅ FINALIZAR COMPRA", key=f"f_{cli_id}", use_container_width=True, type="primary"):
+                            confirmar_finalizar_compra(cli_id, novo_tel, its, tot_sac)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -539,18 +600,33 @@ elif aba_selecionada == "📋 Histórico de Vendas":
 
     vendas = fetch("SELECT * FROM vendas ORDER BY id DESC")
 
-    if vendas:
-        v_tot = sum(v["total"] or 0 for v in vendas)
-        f_tot = sum(v["frete"] or 0 for v in vendas)
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Total Vendas", f"R$ {v_tot:.2f}")
-        m2.metric("Total Fretes", f"R$ {f_tot:.2f}")
-        m3.metric("Volume", len(vendas))
-        st.divider()
-
+    # ALTERAÇÃO 3: busca primeiro, totais refletem o filtro
     busca_h = st.text_input(
         "Pesquisar", placeholder="🔍 Pesquisar no Histórico...", label_visibility="collapsed"
     ).strip().lower()
+
+    # Filtra a lista
+    vendas_filtradas = []
+    for v in vendas:
+        if busca_h and (
+            busca_h not in v["cliente"].lower()
+            and busca_h not in v["data"].lower()
+            and busca_h not in (v["telefone"] or "")
+        ):
+            continue
+        vendas_filtradas.append(v)
+
+    # Totais calculados sobre a lista filtrada
+    if vendas_filtradas:
+        v_tot = sum(v["total"] or 0 for v in vendas_filtradas)
+        f_tot = sum(v["frete"] or 0 for v in vendas_filtradas)
+        pagas = sum(1 for v in vendas_filtradas if v["pago"] == 1)
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Total Vendas",   f"R$ {v_tot:.2f}")
+        m2.metric("Total Fretes",   f"R$ {f_tot:.2f}")
+        m3.metric("Volume",         len(vendas_filtradas))
+        m4.metric("Pagas",          pagas)
+        st.divider()
 
     def _uid_lista(itens_raw):
         result = []
@@ -560,12 +636,7 @@ elif aba_selecionada == "📋 Histórico de Vendas":
             result.append(item)
         return result
 
-    for v in vendas:
-        if busca_h and (
-            busca_h not in v["cliente"].lower()
-            and busca_h not in v["data"].lower()
-            and busca_h not in (v["telefone"] or "")
-        ): continue
+    for v in vendas_filtradas:
 
         its = carregar_itens(v["itens"])
         t_v = (v["total"] or 0) + (v["frete"] or 0)
