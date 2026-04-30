@@ -113,37 +113,43 @@ div[data-testid="stVerticalBlockBorderWrapper"] details summary {
 </style>
 
 <script>
-/* Selecionar todo o texto ao focar — funciona em desktop, Android, iPad e iOS */
+/*
+ * SELECT ALL ON FOCUS — funciona no Streamlit Cloud (desktop + iOS + Android + iPad)
+ * Estratégia: event delegation no document com useCapture=true
+ * penetra o shadow DOM / iframes que o Streamlit usa internamente.
+ * Usa "pointerdown" (unificado para mouse e touch) + "focus" como fallback.
+ */
 (function () {
-    function selectAll(el) {
-        try {
-            /* iOS / Safari precisa do setSelectionRange após um tick */
-            if (typeof el.select === 'function') {
-                el.select();
-            }
-            if (typeof el.setSelectionRange === 'function') {
-                setTimeout(function () {
-                    el.setSelectionRange(0, el.value.length);
-                }, 0);
-            }
-        } catch (e) {}
+    'use strict';
+
+    function trySelect(el) {
+        if (!el || el.readOnly || el.disabled) return;
+        var tag  = (el.tagName || '').toLowerCase();
+        var type = (el.type   || '').toLowerCase();
+        if (tag !== 'input' && tag !== 'textarea') return;
+        if (type === 'checkbox' || type === 'radio'  ||
+            type === 'submit'  || type === 'button'  ||
+            type === 'file'    || type === 'range') return;
+
+        /* Pequeno delay para deixar o browser posicionar o cursor antes */
+        setTimeout(function () {
+            try {
+                el.select();                          /* desktop */
+                el.setSelectionRange(0, 9999);        /* iOS Safari */
+            } catch (_) {}
+        }, 30);
     }
 
-    function bindInputs() {
-        document.querySelectorAll('input[type="text"], input[type="number"]').forEach(function (el) {
-            if (el._selectAllBound) return;
-            el._selectAllBound = true;
-            el.addEventListener('focus', function () { selectAll(el); });
-            /* touchstart cobre iOS onde focus não propaga direito */
-            el.addEventListener('touchstart', function () {
-                setTimeout(function () { selectAll(el); }, 100);
-            }, { passive: true });
-        });
-    }
+    /* pointerdown cobre mouse click + touch em qualquer dispositivo */
+    document.addEventListener('pointerdown', function (e) {
+        trySelect(e.target);
+    }, true);   /* useCapture=true → captura antes do Streamlit consumir */
 
-    /* Roda no carregamento e a cada mudança do DOM (Streamlit re-renderiza) */
-    bindInputs();
-    new MutationObserver(bindInputs).observe(document.body, { childList: true, subtree: true });
+    /* focus como fallback (teclado, tab, foco programático) */
+    document.addEventListener('focus', function (e) {
+        trySelect(e.target);
+    }, true);
+
 })();
 </script>
 """, unsafe_allow_html=True)
