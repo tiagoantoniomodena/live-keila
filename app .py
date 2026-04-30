@@ -5,6 +5,7 @@
 # ============================================================
 
 import streamlit as st
+import streamlit.components.v1 as components
 import psycopg2
 import psycopg2.extras
 import json
@@ -111,47 +112,6 @@ div[data-testid="stVerticalBlockBorderWrapper"] details summary {
 .kpi-pink   { border-left: 3px solid #F472B6; }
 .section-title { font-size: 0.78rem; font-weight: 700; color: #6B7280; text-transform: uppercase; letter-spacing: 0.08em; margin: 1.2rem 0 0.5rem 0; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.06); }
 </style>
-
-<script>
-/*
- * SELECT ALL ON FOCUS — funciona no Streamlit Cloud (desktop + iOS + Android + iPad)
- * Estratégia: event delegation no document com useCapture=true
- * penetra o shadow DOM / iframes que o Streamlit usa internamente.
- * Usa "pointerdown" (unificado para mouse e touch) + "focus" como fallback.
- */
-(function () {
-    'use strict';
-
-    function trySelect(el) {
-        if (!el || el.readOnly || el.disabled) return;
-        var tag  = (el.tagName || '').toLowerCase();
-        var type = (el.type   || '').toLowerCase();
-        if (tag !== 'input' && tag !== 'textarea') return;
-        if (type === 'checkbox' || type === 'radio'  ||
-            type === 'submit'  || type === 'button'  ||
-            type === 'file'    || type === 'range') return;
-
-        /* Pequeno delay para deixar o browser posicionar o cursor antes */
-        setTimeout(function () {
-            try {
-                el.select();                          /* desktop */
-                el.setSelectionRange(0, 9999);        /* iOS Safari */
-            } catch (_) {}
-        }, 30);
-    }
-
-    /* pointerdown cobre mouse click + touch em qualquer dispositivo */
-    document.addEventListener('pointerdown', function (e) {
-        trySelect(e.target);
-    }, true);   /* useCapture=true → captura antes do Streamlit consumir */
-
-    /* focus como fallback (teclado, tab, foco programático) */
-    document.addEventListener('focus', function (e) {
-        trySelect(e.target);
-    }, true);
-
-})();
-</script>
 """, unsafe_allow_html=True)
 
 
@@ -400,6 +360,34 @@ st.markdown(
 
 opcoes_aba = ["🛍️ Monitor de Sacolas", "📋 Histórico de Vendas", "📊 Relatório Geral", "👤 Cadastro de Clientes"]
 aba_selecionada = st.radio("Navegação", opcoes_aba, horizontal=True, label_visibility="collapsed")
+
+# ── Select-all on focus: injeta via iframe próprio que acessa window.parent ──
+# É a única forma de cruzar a barreira de iframes do Streamlit
+components.html("""
+<script>
+(function () {
+    var doc = window.parent ? window.parent.document : document;
+
+    function sel(el) {
+        if (!el) return;
+        var t = (el.type || '').toLowerCase();
+        if (t === 'checkbox' || t === 'radio' || t === 'file' ||
+            t === 'submit'  || t === 'button' || t === 'range') return;
+        setTimeout(function () {
+            try { el.select(); } catch(e) {}
+            try { el.setSelectionRange(0, 99999); } catch(e) {}
+        }, 50);
+    }
+
+    doc.addEventListener('focusin', function (e) { sel(e.target); }, true);
+    doc.addEventListener('pointerdown', function (e) {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+            sel(e.target);
+        }
+    }, true);
+})();
+</script>
+""", height=0)
 
 
 # ══════════════════════════════════════════════════════════════════
