@@ -23,6 +23,55 @@ import uuid as _uuid
 st.set_page_config(page_title="Live da Keila", layout="wide", page_icon="🔴")
 
 # ─────────────────────────────────────────────
+# LOGIN
+# ─────────────────────────────────────────────
+SENHA_CORRETA = "tklive"
+
+if "autenticado" not in st.session_state:
+    st.session_state.autenticado = False
+
+if not st.session_state.autenticado:
+    st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap');
+    html,body,.stApp { font-family:'Space Grotesk',sans-serif !important; background:#080C12 !important; }
+    .live-dot { width:14px;height:14px;border-radius:50%;background:#FF5252;
+                display:inline-block;margin-bottom:20px;animation:blink 1s infinite; }
+    @keyframes blink{0%{opacity:1}50%{opacity:0.3}100%{opacity:1}}
+    </style>
+    """, unsafe_allow_html=True)
+
+    sp1, col_c, sp2 = st.columns([1, 1.1, 1])
+    with col_c:
+        st.markdown("""
+        <div style="background:#0E1420;border:1px solid rgba(255,255,255,0.08);
+                    border-radius:20px;padding:44px 40px 36px;text-align:center;margin-top:80px;">
+            <div class="live-dot"></div>
+            <div style="font-size:1.5rem;font-weight:700;color:#F9FAFB;margin-bottom:6px;">
+                Live da Keila
+            </div>
+            <div style="font-size:0.85rem;color:#6B7280;margin-bottom:28px;">
+                Digite a senha para continuar
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        senha_input = st.text_input(
+            "Senha", type="password",
+            placeholder="••••••",
+            label_visibility="collapsed",
+            key="campo_senha"
+        )
+        if st.button("🔓 Entrar", use_container_width=True, type="primary"):
+            if senha_input == SENHA_CORRETA:
+                st.session_state.autenticado = True
+                st.rerun()
+            else:
+                st.error("Senha incorreta. Tente novamente.")
+    st.stop()
+
+
+# ─────────────────────────────────────────────
 # CSS PERSONALIZADO
 # ─────────────────────────────────────────────
 st.markdown("""
