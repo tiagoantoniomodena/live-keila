@@ -218,10 +218,29 @@ criar_tabelas()
 # ─────────────────────────────────────────────
 # HELPERS
 # ─────────────────────────────────────────────
+def fix_encoding(texto):
+    """
+    Corrige double-encoding UTF-8→latin-1 (ç vira Ã§, ã vira Ã£, etc.)
+    Ocorre quando dados foram migrados do SQLite com encoding incorreto.
+    """
+    if not texto:
+        return texto
+    try:
+        return texto.encode('latin-1').decode('utf-8')
+    except (UnicodeDecodeError, UnicodeEncodeError):
+        return texto
+
+
 def carregar_itens(json_str):
     try:
         dados = json.loads(json_str or "[]")
-        return dados if isinstance(dados, list) else []
+        if not isinstance(dados, list):
+            return []
+        # Corrige encoding dos nomes de itens vindos do banco
+        for item in dados:
+            if "nome" in item:
+                item["nome"] = fix_encoding(item["nome"])
+        return dados
     except Exception:
         return []
 
@@ -251,6 +270,10 @@ def gerar_imagem_cupom(cliente, itens, frete, subtotal, total_geral, data_venda=
     Cupom com fonte Poppins (suporte completo a UTF-8: ç ã ê etc.)
     Layout: ITEM | QTD | UNIT | TOTAL — sem R$ entre colunas.
     """
+    # Corrige encoding do cliente e nome dos itens antes de renderizar
+    cliente = fix_encoding(cliente or "")
+    itens   = [{**i, "nome": fix_encoding(i.get("nome", ""))} for i in itens]
+
     BRANCO  = (255, 255, 255)
     PRETO   = (28,  28,  28)
     CINZA   = (150, 150, 150)
