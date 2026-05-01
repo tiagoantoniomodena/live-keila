@@ -398,9 +398,6 @@ def gerar_imagem_cupom(cliente, itens, frete, subtotal, total_geral, data_venda=
     return buf.getvalue()
 
 
- 
-
-
 # ─────────────────────────────────────────────
 # DIALOGS
 # ─────────────────────────────────────────────
