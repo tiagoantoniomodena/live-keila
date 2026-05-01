@@ -285,111 +285,118 @@ def carregar_itens(json_str):
 # ─────────────────────────────────────────────
 def gerar_imagem_cupom(cliente, itens, frete, subtotal, total_geral, data_venda=""):
     """
-    Cupom com fonte Poppins (suporte completo a UTF-8: ç ã ê etc.)
-    Layout: ITEM | QTD | UNIT | TOTAL — sem R$ entre colunas.
+    Cupom estilo terminal — fundo escuro, fonte mono, bordas com = e -.
+    Visual idêntico ao cupom de referência da Live da Keila.
     """
-    # Corrige encoding do cliente e nome dos itens antes de renderizar
+    # ── Corrige encoding (ç, ã, etc.) ──
     cliente = fix_encoding(cliente or "")
     itens   = [{**i, "nome": fix_encoding(i.get("nome", ""))} for i in itens]
 
-    BRANCO  = (255, 255, 255)
-    PRETO   = (28,  28,  28)
-    CINZA   = (150, 150, 150)
-    CINZA_L = (220, 220, 220)
-    VERM    = (200, 40,  40)
+    # ── Paleta ──
+    BG      = (28,  28,  28)
+    FG      = (220, 220, 220)
+    FG_DIM  = (160, 160, 160)
+    AMARELO = (255, 220,  80)
+    VERDE   = (100, 220, 130)
 
-    largura = 750
-    MARG    = 52
-    LIN     = 38
-    altura  = 430 + max(len(itens), 1) * LIN + (34 if frete > 0 else 0)
+    # ── Fontes mono (DejaVu suporta ç, ã, etc.) ──
+    FONT_R = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
+    FONT_B = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf"
+    FSIZE    = 19
+    FSIZE_SM = 16
 
-    img  = Image.new("RGB", (largura, altura), BRANCO)
+    try:
+        fb    = ImageFont.truetype(FONT_B, FSIZE)
+        fr    = ImageFont.truetype(FONT_R, FSIZE)
+        fb_sm = ImageFont.truetype(FONT_B, FSIZE_SM)
+        fr_sm = ImageFont.truetype(FONT_R, FSIZE_SM)
+    except Exception:
+        fb = fr = fb_sm = fr_sm = ImageFont.load_default()
+
+    # ── Dimensões baseadas em char width mono ──
+    COLS  = 44
+    cw    = fr.getbbox("=")[2]
+    PAD_X = 22
+    PAD_Y = 18
+    LIN_H = FSIZE + 11
+
+    largura  = cw * COLS + PAD_X * 2
+    n_linhas = 14 + max(len(itens), 1) + (1 if frete > 0 else 0)
+    altura   = PAD_Y * 2 + LIN_H * n_linhas + 20
+
+    img  = Image.new("RGB", (largura, altura), BG)
     draw = ImageDraw.Draw(img)
 
-    # ── Poppins: suporta todos os caracteres do português ──
-    def _font(peso, tam):
-        caminhos = {
-            "bold":   ["/usr/share/fonts/truetype/google-fonts/Poppins-Bold.ttf",
-                       "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"],
-            "medium": ["/usr/share/fonts/truetype/google-fonts/Poppins-Medium.ttf",
-                       "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"],
-            "norm":   ["/usr/share/fonts/truetype/google-fonts/Poppins-Regular.ttf",
-                       "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"],
-            "light":  ["/usr/share/fonts/truetype/google-fonts/Poppins-Light.ttf",
-                       "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"],
-        }
-        for c in caminhos.get(peso, caminhos["norm"]):
-            try: return ImageFont.truetype(c, tam)
-            except: continue
-        return ImageFont.load_default()
+    y = [PAD_Y]   # lista para permitir escrita dentro de closures
 
-    f_titulo = _font("bold",   19)
-    f_bold   = _font("bold",   16)
-    f_med    = _font("medium", 15)
-    f_norm   = _font("norm",   15)
-    f_small  = _font("light",  13)
+    def ln(txt, fonte=None, cor=FG, center=False):
+        f = fonte or fr
+        if center:
+            bb = draw.textbbox((0, 0), txt, font=f)
+            x  = (largura - (bb[2] - bb[0])) // 2
+        else:
+            x = PAD_X
+        draw.text((x, y[0]), txt, cor, font=f)
+        y[0] += LIN_H
 
-    # ── Posições X fixas ──
-    X_ITEM = MARG           # nome do produto: alinha esquerda
-    X_QTD  = MARG + 310    # qtd: alinha esquerda
-    X_UNIT = MARG + 490    # unit: alinha direita
-    X_TOT  = largura - MARG # total: alinha direita
+    def sep(char="="):
+        ln(char * COLS, cor=FG_DIM)
 
-    def esq(x, y, txt, f, cor=PRETO):
-        draw.text((x, y), str(txt), cor, font=f)
+    def ln_item(nome, qtd, unit, tot):
+        # DESCRIÇÃO 20 chars | QTD 4 | UNIT 9 | TOTAL 9
+        n = nome[:20].ljust(20)
+        q = str(int(qtd)).zfill(2).rjust(4)
+        u = f"{float(unit):,.2f}".replace(",", ".").rjust(9)
+        t = f"{float(tot):,.2f}".replace(",", ".").rjust(9)
+        ln(f" {n}{q}{u}{t}")
 
-    def dir_(x, y, txt, f, cor=PRETO):
-        bb = draw.textbbox((0, 0), str(txt), font=f)
-        draw.text((x - (bb[2] - bb[0]), y), str(txt), cor, font=f)
+    def ln_valor(label, valor, fonte=None, cor=FG):
+        v      = f"R$ {valor:,.2f}".replace(",", ".")
+        espaco = COLS - len(label) - len(v)
+        ln(f"{label}{' ' * max(espaco, 1)}{v}", fonte=fonte or fb, cor=cor)
 
-    y = 46
-
-    # Título centralizado
-    titulo = "--- LIVE DA KEILA ---"
-    bb = draw.textbbox((0, 0), titulo, font=f_titulo)
-    draw.text(((largura - (bb[2] - bb[0])) // 2, y), titulo, PRETO, font=f_titulo)
-    y += 50
-
-    # Cliente e data
-    esq(MARG, y, f"CLIENTE: {cliente.upper()}", f_bold);            y += 32
-    esq(MARG, y, f"DATA:    {data_venda.split(' ')[0]}", f_small, CINZA); y += 46
-
-    # Linha topo da tabela
-    draw.line((MARG, y, largura - MARG, y), CINZA_L, 1); y += 14
+    # ── Monta o cupom ──
+    sep("=")
+    ln(" LIVE DA KEILA", fonte=fb, center=True)
+    sep("=")
+    ln(f" Data: {data_venda.split(' ')[0]}", cor=FG_DIM)
+    sep("-")
 
     # Cabeçalho da tabela
-    esq( X_ITEM, y, "ITEM",  f_bold)
-    esq( X_QTD,  y, "QTD",  f_bold)
-    dir_(X_UNIT, y, "UNIT",  f_bold)
-    dir_(X_TOT,  y, "TOTAL", f_bold)
-    y += 26
+    cab = f" {'DESCRIÇÃO'.ljust(20)}{'QTD'.rjust(4)}{'UNIT'.rjust(9)}{'TOTAL'.rjust(9)}"
+    ln(cab, fonte=fb)
+    sep("-")
 
-    draw.line((MARG, y, largura - MARG, y), CINZA_L, 1); y += 16
-
-    # Linhas de itens
+    # Itens
     for i in itens:
-        u = float(i["preco"]); q = int(i["qtd"]); s = u * q
-        esq( X_ITEM, y, i["nome"][:34],  f_norm)
-        esq( X_QTD,  y, str(q),          f_norm)
-        dir_(X_UNIT, y, f"{u:.2f}",      f_norm)
-        dir_(X_TOT,  y, f"{s:.2f}",      f_med)
-        y += LIN
+        s = float(i["preco"]) * int(i["qtd"])
+        ln_item(i["nome"], i["qtd"], i["preco"], s)
 
-    y += 10
-    draw.line((MARG, y, largura - MARG, y), CINZA_L, 1); y += 26
+    sep("-")
 
-    # Totais
-    qtd_tot = sum(int(i["qtd"]) for i in itens)
-    esq(MARG, y, f"TOTAL ITENS: {qtd_tot}",          f_norm);       y += 30
-    esq(MARG, y, f"SUBTOTAL: R$ {subtotal:.2f}",     f_norm);       y += 30
+    # Subtotal e frete
+    ln_valor("SUBTOTAL:", subtotal)
     if frete > 0:
-        esq(MARG, y, f"FRETE: R$ {frete:.2f}",       f_norm);       y += 30
-    y += 10
-    esq(MARG, y, f"TOTAL GERAL: R$ {total_geral:.2f}", f_bold, VERM)
+        ln_valor("FRETE:", frete)
+
+    sep("-")
+    ln_valor("TOTAL A PAGAR:", total_geral, fonte=fb, cor=AMARELO)
+    sep("=")
+
+    # Rodapé PIX
+    ln("", cor=FG)
+    ln(" PAGAMENTO VIA PIX (CHAVE):", fonte=fb_sm, cor=FG_DIM, center=True)
+    ln("keilarochadesigner@gmail.com", fonte=fr_sm, cor=VERDE, center=True)
+    ln("", cor=FG)
+    sep("=")
+
+    # Recorta altura real usada
+    img_final = img.crop((0, 0, largura, min(y[0] + PAD_Y, altura)))
 
     buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=97)
+    img_final.save(buf, format="JPEG", quality=97)
     return buf.getvalue()
+
 
 
 # ─────────────────────────────────────────────
