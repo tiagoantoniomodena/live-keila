@@ -283,7 +283,7 @@ def carregar_itens(json_str):
 # ─────────────────────────────────────────────
 # CUPOM
 # ─────────────────────────────────────────────
-def gerar_imagem_cupom(cliente, itens, frete, subtotal, total_geral, data_venda=""):
+def gerar_cupom_imagem(cliente, itens, frete, subtotal, total_geral, data_venda=""):
     """
     Cupom estilo terminal — fundo escuro, fonte mono, bordas com = e -.
     Visual idêntico ao cupom de referência da Live da Keila.
