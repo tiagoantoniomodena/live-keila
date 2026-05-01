@@ -247,112 +247,104 @@ sincronizar_clientes()
 # CUPOM
 # ─────────────────────────────────────────────
 def gerar_imagem_cupom(cliente, itens, frete, subtotal, total_geral, data_venda=""):
-    """Cupom com colunas fixas alinhadas: ITEM | QTD | UNIT | R$ | TOTAL"""
-    BRANCO   = (255, 255, 255)
-    PRETO    = (15,  15,  15)
-    CINZA    = (140, 140, 140)
-    CINZA_L  = (210, 210, 210)
-    VERMELHO = (200, 40,  40)
+    """
+    Cupom com fonte Poppins (suporte completo a UTF-8: ç ã ê etc.)
+    Layout: ITEM | QTD | UNIT | TOTAL — sem R$ entre colunas.
+    """
+    BRANCO  = (255, 255, 255)
+    PRETO   = (28,  28,  28)
+    CINZA   = (150, 150, 150)
+    CINZA_L = (220, 220, 220)
+    VERM    = (200, 40,  40)
 
-    largura = 700
-    MARG    = 44
-    LIN     = 32
-    altura  = 360 + max(len(itens), 1) * LIN + (36 if frete > 0 else 0)
+    largura = 750
+    MARG    = 52
+    LIN     = 38
+    altura  = 430 + max(len(itens), 1) * LIN + (34 if frete > 0 else 0)
 
     img  = Image.new("RGB", (largura, altura), BRANCO)
     draw = ImageDraw.Draw(img)
 
-    # ── Fonte: tenta Courier (mono) para alinhamento perfeito ──
-    F = {}
-    for caminho in [
-        "C:\\Windows\\Fonts\\cour.ttf",
-        "C:\\Windows\\Fonts\\courbd.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
-    ]:
-        try:
-            F["titulo"] = ImageFont.truetype(caminho, 20)
-            F["bold"]   = ImageFont.truetype(caminho, 18)
-            F["norm"]   = ImageFont.truetype(caminho, 16)
-            F["small"]  = ImageFont.truetype(caminho, 14)
-            break
-        except Exception:
-            continue
-    if "norm" not in F:
-        fb = ImageFont.load_default()
-        F = {"titulo": fb, "bold": fb, "norm": fb, "small": fb}
+    # ── Poppins: suporta todos os caracteres do português ──
+    def _font(peso, tam):
+        caminhos = {
+            "bold":   ["/usr/share/fonts/truetype/google-fonts/Poppins-Bold.ttf",
+                       "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"],
+            "medium": ["/usr/share/fonts/truetype/google-fonts/Poppins-Medium.ttf",
+                       "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"],
+            "norm":   ["/usr/share/fonts/truetype/google-fonts/Poppins-Regular.ttf",
+                       "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"],
+            "light":  ["/usr/share/fonts/truetype/google-fonts/Poppins-Light.ttf",
+                       "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"],
+        }
+        for c in caminhos.get(peso, caminhos["norm"]):
+            try: return ImageFont.truetype(c, tam)
+            except: continue
+        return ImageFont.load_default()
 
-    # ── Posições X das colunas (todas fixas) ──
-    #  ITEM começa em MARG
-    #  QTD  começa em X_QTD   (alinha à esquerda)
-    #  UNIT termina em X_UNIT  (alinha à direita — valor)
-    #  RS   começa em X_RS     (texto "R$" fixo)
-    #  TOT  termina em X_TOT   (alinha à direita — valor)
-    X_ITEM = MARG
-    X_QTD  = MARG + 258   # início da coluna QTD
-    X_UNIT = MARG + 400   # borda direita da coluna UNIT (valor alinha aqui)
-    X_RS   = MARG + 420   # início do "R$"
-    X_TOT  = largura - MARG  # borda direita da coluna TOTAL
+    f_titulo = _font("bold",   19)
+    f_bold   = _font("bold",   16)
+    f_med    = _font("medium", 15)
+    f_norm   = _font("norm",   15)
+    f_small  = _font("light",  13)
+
+    # ── Posições X fixas ──
+    X_ITEM = MARG           # nome do produto: alinha esquerda
+    X_QTD  = MARG + 310    # qtd: alinha esquerda
+    X_UNIT = MARG + 490    # unit: alinha direita
+    X_TOT  = largura - MARG # total: alinha direita
 
     def esq(x, y, txt, f, cor=PRETO):
-        draw.text((x, y), txt, cor, font=f)
+        draw.text((x, y), str(txt), cor, font=f)
 
     def dir_(x, y, txt, f, cor=PRETO):
-        """Escreve alinhado à direita terminando em x."""
-        bb = draw.textbbox((0, 0), txt, font=f)
-        w  = bb[2] - bb[0]
-        draw.text((x - w, y), txt, cor, font=f)
+        bb = draw.textbbox((0, 0), str(txt), font=f)
+        draw.text((x - (bb[2] - bb[0]), y), str(txt), cor, font=f)
 
-    def centro(x, y, txt, f, cor=PRETO):
-        bb = draw.textbbox((0, 0), txt, font=f)
-        w  = bb[2] - bb[0]
-        draw.text((x - w // 2, y), txt, cor, font=f)
+    y = 46
 
-    y = 38
-
-    # ── Título ──
+    # Título centralizado
     titulo = "--- LIVE DA KEILA ---"
-    bb = draw.textbbox((0, 0), titulo, font=F["titulo"])
-    draw.text(((largura - (bb[2]-bb[0])) // 2, y), titulo, PRETO, font=F["titulo"])
-    y += 42
+    bb = draw.textbbox((0, 0), titulo, font=f_titulo)
+    draw.text(((largura - (bb[2] - bb[0])) // 2, y), titulo, PRETO, font=f_titulo)
+    y += 50
 
-    # ── Cliente / Data ──
-    esq(MARG, y, f"CLIENTE: {cliente.upper()}", F["bold"]); y += 28
-    esq(MARG, y, f"DATA:    {data_venda.split(' ')[0]}", F["norm"], CINZA); y += 38
+    # Cliente e data
+    esq(MARG, y, f"CLIENTE: {cliente.upper()}", f_bold);            y += 32
+    esq(MARG, y, f"DATA:    {data_venda.split(' ')[0]}", f_small, CINZA); y += 46
 
-    # ── Cabeçalho da tabela ──
-    esq(X_ITEM, y, "ITEM",  F["bold"])
-    esq(X_QTD,  y, "QTD",  F["bold"])
-    dir_(X_UNIT, y, "UNIT", F["bold"])   # alinha à direita da coluna UNIT
-    dir_(X_TOT,  y, "TOTAL", F["bold"])  # alinha à direita da coluna TOTAL
-    y += 24
+    # Linha topo da tabela
+    draw.line((MARG, y, largura - MARG, y), CINZA_L, 1); y += 14
 
-    draw.line((MARG, y, largura - MARG, y), CINZA_L, 1); y += 12
+    # Cabeçalho da tabela
+    esq( X_ITEM, y, "ITEM",  f_bold)
+    esq( X_QTD,  y, "QTD",  f_bold)
+    dir_(X_UNIT, y, "UNIT",  f_bold)
+    dir_(X_TOT,  y, "TOTAL", f_bold)
+    y += 26
 
-    # ── Linhas de itens ──
+    draw.line((MARG, y, largura - MARG, y), CINZA_L, 1); y += 16
+
+    # Linhas de itens
     for i in itens:
-        u = float(i["preco"])
-        q = int(i["qtd"])
-        s = u * q
-        nome_curto = i["nome"][:28]
-
-        esq( X_ITEM, y, nome_curto,      F["norm"])
-        esq( X_QTD,  y, str(q),          F["norm"])
-        dir_(X_UNIT, y, f"{u:.2f}",      F["norm"])   # valor unitário → alinha com cabeçalho UNIT
-        esq( X_RS,   y, "R$",            F["small"], CINZA)
-        dir_(X_TOT,  y, f"{s:.2f}",      F["norm"])   # total → alinha com cabeçalho TOTAL
+        u = float(i["preco"]); q = int(i["qtd"]); s = u * q
+        esq( X_ITEM, y, i["nome"][:34],  f_norm)
+        esq( X_QTD,  y, str(q),          f_norm)
+        dir_(X_UNIT, y, f"{u:.2f}",      f_norm)
+        dir_(X_TOT,  y, f"{s:.2f}",      f_med)
         y += LIN
 
-    draw.line((MARG, y + 4, largura - MARG, y + 4), CINZA_L, 1); y += 24
+    y += 10
+    draw.line((MARG, y, largura - MARG, y), CINZA_L, 1); y += 26
 
-    # ── Rodapé ──
+    # Totais
     qtd_tot = sum(int(i["qtd"]) for i in itens)
-    esq(MARG, y, f"TOTAL ITENS: {qtd_tot}",        F["norm"]); y += 28
-    esq(MARG, y, f"SUBTOTAL: R$ {subtotal:.2f}",   F["norm"]); y += 28
+    esq(MARG, y, f"TOTAL ITENS: {qtd_tot}",          f_norm);       y += 30
+    esq(MARG, y, f"SUBTOTAL: R$ {subtotal:.2f}",     f_norm);       y += 30
     if frete > 0:
-        esq(MARG, y, f"FRETE: R$ {frete:.2f}",     F["norm"]); y += 28
-    y += 8
-    esq(MARG, y, f"TOTAL GERAL: R$ {total_geral:.2f}", F["bold"], VERMELHO)
+        esq(MARG, y, f"FRETE: R$ {frete:.2f}",       f_norm);       y += 30
+    y += 10
+    esq(MARG, y, f"TOTAL GERAL: R$ {total_geral:.2f}", f_bold, VERM)
 
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=97)
