@@ -33,7 +33,7 @@ if "autenticado" not in st.session_state:
 if not st.session_state.autenticado:
     st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap&font-display=swap');
     html,body,.stApp { font-family:'Space Grotesk',sans-serif !important; background:#080C12 !important; }
     .live-dot { width:14px;height:14px;border-radius:50%;background:#FF5252;
                 display:inline-block;margin-bottom:20px;animation:blink 1s infinite; }
@@ -76,7 +76,7 @@ if not st.session_state.autenticado:
 # ─────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap&font-display=swap');
 html, body, .stApp { font-family: 'Space Grotesk', sans-serif !important; background: #080C12 !important; }
 .stRadio > div { flex-direction: row !important; gap: 20px !important; }
 .stRadio label { background: #1A1F2B; padding: 10px 20px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); color: white; }
@@ -167,6 +167,8 @@ div[data-testid="stVerticalBlockBorderWrapper"] details summary {
 # ─────────────────────────────────────────────
 # CONEXÃO COM BANCO
 # ─────────────────────────────────────────────
+import psycopg2.extensions as _ext
+
 def _nova_conexao():
     return psycopg2.connect(
         st.secrets["SUPABASE_DB_URL"],
@@ -179,9 +181,9 @@ def db():
         conn = _nova_conexao()
         conn.autocommit = True
         st.session_state["_pg_conn"] = conn
-    else:
+    elif conn.status not in (_ext.STATUS_READY, _ext.STATUS_BEGIN):
         try:
-            conn.cursor().execute("SELECT 1")
+            conn.reset()
         except Exception:
             conn = _nova_conexao()
             conn.autocommit = True
@@ -189,7 +191,12 @@ def db():
     return conn.cursor()
 
 def run(sql, params=()):
-    cur = db(); cur.execute(sql, params)
+    """Executa escrita e invalida o cache de leitura."""
+    cur = db()
+    cur.execute(sql, params)
+    # Invalida cache para a próxima leitura buscar dados frescos
+    for k in ("_cache_sacolas", "_cache_vendas", "_cache_clientes", "_cache_clientes_full"):
+        st.session_state.pop(k, None)
 
 def fetch(sql, params=()):
     cur = db(); cur.execute(sql, params); return cur.fetchall()
@@ -197,11 +204,37 @@ def fetch(sql, params=()):
 def fetchone(sql, params=()):
     cur = db(); cur.execute(sql, params); return cur.fetchone()
 
+# ── Cache de leitura em memória (evita round-trip ao Supabase a cada clique) ──
+def get_sacolas():
+    """Retorna sacolas do cache ou busca no banco (1 query por ciclo de UI)."""
+    if "_cache_sacolas" not in st.session_state:
+        st.session_state["_cache_sacolas"] = fetch(
+            "SELECT * FROM sacolas_ativas ORDER BY ultima_alteracao DESC"
+        )
+    return st.session_state["_cache_sacolas"]
+
+def get_vendas():
+    """Retorna vendas do cache ou busca no banco."""
+    if "_cache_vendas" not in st.session_state:
+        st.session_state["_cache_vendas"] = fetch(
+            "SELECT * FROM vendas ORDER BY id DESC"
+        )
+    return st.session_state["_cache_vendas"]
+
+def get_clientes():
+    """Retorna clientes do cache ou busca no banco."""
+    if "_cache_clientes" not in st.session_state:
+        st.session_state["_cache_clientes"] = fetch(
+            "SELECT nome, telefone FROM clientes WHERE nome IS NOT NULL"
+        )
+    return st.session_state["_cache_clientes"]
+
 
 # ─────────────────────────────────────────────
 # CRIAÇÃO DAS TABELAS
 # ─────────────────────────────────────────────
-def criar_tabelas():
+@st.cache_resource
+def _criar_tabelas_uma_vez():
     run("""CREATE TABLE IF NOT EXISTS sacolas_ativas (
         cliente TEXT PRIMARY KEY, telefone TEXT, itens TEXT, ultima_alteracao TEXT)""")
     run("""CREATE TABLE IF NOT EXISTS vendas (
@@ -212,7 +245,7 @@ def criar_tabelas():
         cpf TEXT, cep TEXT, logradouro TEXT, numero TEXT, complemento TEXT,
         bairro TEXT, cidade TEXT, estado TEXT, observacoes TEXT, data_cadastro TEXT)""")
 
-criar_tabelas()
+_criar_tabelas_uma_vez()
 
 
 # ─────────────────────────────────────────────
@@ -244,22 +277,7 @@ def carregar_itens(json_str):
     except Exception:
         return []
 
-def sincronizar_clientes():
-    existentes = {r["nome"].lower() for r in fetch("SELECT nome FROM clientes WHERE nome IS NOT NULL") if r["nome"]}
-    fontes = (
-        fetch("SELECT cliente AS nome, telefone FROM sacolas_ativas WHERE cliente IS NOT NULL") +
-        fetch("SELECT DISTINCT cliente AS nome, telefone FROM vendas WHERE cliente IS NOT NULL")
-    )
-    vistos = set()
-    for row in fontes:
-        nome = (row["nome"] or "").strip().lower()
-        if not nome or nome in existentes or nome in vistos:
-            continue
-        vistos.add(nome)
-        run("INSERT INTO clientes (nome, data_cadastro) VALUES (%s,%s) ON CONFLICT DO NOTHING",
-            (nome, datetime.now().strftime("%d/%m/%Y %H:%M")))
-
-sincronizar_clientes()
+# sincronizar_clientes() agora é chamada só quando necessário (após criar sacola ou finalizar venda)
 
 
 # ─────────────────────────────────────────────
@@ -425,33 +443,15 @@ st.markdown(
 opcoes_aba = ["🛍️ Monitor de Sacolas", "📋 Histórico de Vendas", "📊 Relatório Geral", "👤 Cadastro de Clientes"]
 aba_selecionada = st.radio("Navegação", opcoes_aba, horizontal=True, label_visibility="collapsed")
 
-# ── Select-all on focus: injeta via iframe próprio que acessa window.parent ──
-# É a única forma de cruzar a barreira de iframes do Streamlit
-components.html("""
-<script>
-(function () {
-    var doc = window.parent ? window.parent.document : document;
-
-    function sel(el) {
-        if (!el) return;
-        var t = (el.type || '').toLowerCase();
-        if (t === 'checkbox' || t === 'radio' || t === 'file' ||
-            t === 'submit'  || t === 'button' || t === 'range') return;
-        setTimeout(function () {
-            try { el.select(); } catch(e) {}
-            try { el.setSelectionRange(0, 99999); } catch(e) {}
-        }, 50);
-    }
-
-    doc.addEventListener('focusin', function (e) { sel(e.target); }, true);
-    doc.addEventListener('pointerdown', function (e) {
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-            sel(e.target);
-        }
-    }, true);
-})();
-</script>
-""", height=0)
+# ── Select-all via components.html (acessa window.parent) ──
+components.html("""<script>
+(function(){var d=window.parent?window.parent.document:document;
+function s(el){if(!el)return;var t=(el.type||'').toLowerCase();
+if(t==='checkbox'||t==='radio'||t==='file'||t==='submit'||t==='button')return;
+setTimeout(function(){try{el.select();}catch(e){}try{el.setSelectionRange(0,99999);}catch(e){}},30);}
+d.addEventListener('focusin',function(e){s(e.target);},true);
+d.addEventListener('pointerdown',function(e){if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')s(e.target);},true);})();
+</script>""",height=0)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -461,7 +461,7 @@ if aba_selecionada == "🛍️ Monitor de Sacolas":
 
     # ── Autocomplete de clientes ──
     todos_clientes = {}
-    for r in fetch("SELECT nome, telefone FROM clientes WHERE nome IS NOT NULL"):
+    for r in get_clientes():
         n = (r["nome"] or "").strip().lower()
         if n: todos_clientes[n] = r["telefone"] or ""
 
@@ -554,7 +554,7 @@ if aba_selecionada == "🛍️ Monitor de Sacolas":
             "Busca", placeholder="🔍 Pesquisar sacola...", label_visibility="collapsed"
         ).strip().lower()
 
-        sacolas = fetch("SELECT * FROM sacolas_ativas ORDER BY ultima_alteracao DESC")
+        sacolas = get_sacolas()
 
         for row in sacolas:
             its     = carregar_itens(row["itens"])
@@ -677,7 +677,7 @@ if aba_selecionada == "🛍️ Monitor de Sacolas":
 # ══════════════════════════════════════════════════════════════════
 elif aba_selecionada == "📋 Histórico de Vendas":
 
-    vendas = fetch("SELECT * FROM vendas ORDER BY id DESC")
+    vendas = get_vendas()
 
     # ALTERAÇÃO 3: busca primeiro, totais refletem o filtro
     busca_h = st.text_input(
@@ -822,7 +822,7 @@ elif aba_selecionada == "📋 Histórico de Vendas":
 # ══════════════════════════════════════════════════════════════════
 elif aba_selecionada == "📊 Relatório Geral":
 
-    vendas_rows = fetch("SELECT * FROM vendas")
+    vendas_rows = get_vendas()
 
     if not vendas_rows:
         st.info("Nenhuma venda registrada ainda.")
@@ -957,9 +957,11 @@ elif aba_selecionada == "👤 Cadastro de Clientes":
         return cpf
 
     def _carregar_clientes_db():
-        return fetch("""SELECT id, nome, nome_completo, telefone, cpf, cep, logradouro,
+        if "_cache_clientes_full" not in st.session_state:
+            st.session_state["_cache_clientes_full"] = fetch("""SELECT id, nome, nome_completo, telefone, cpf, cep, logradouro,
                    numero, complemento, bairro, cidade, estado, observacoes, data_cadastro
                    FROM clientes ORDER BY nome ASC""")
+        return st.session_state["_cache_clientes_full"]
 
     col_busca, col_novo = st.columns([4, 1.2])
     busca_cad = col_busca.text_input(
