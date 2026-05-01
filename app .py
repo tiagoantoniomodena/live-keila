@@ -194,7 +194,7 @@ def run(sql, params=()):
     """Executa escrita e invalida o cache de leitura."""
     cur = db()
     cur.execute(sql, params)
-    # Invalida cache para a próxima leitura buscar dados frescos
+    # Invalida todos os caches para a próxima leitura buscar dados frescos
     for k in ("_cache_sacolas", "_cache_vendas", "_cache_clientes", "_cache_clientes_full"):
         st.session_state.pop(k, None)
 
@@ -411,11 +411,18 @@ def confirmar_exclusao(tipo, id_excluir, extra=None):
     st.error("Tem certeza que deseja excluir este item?")
     c1, c2 = st.columns(2)
     if c1.button("🗑️ Sim, Excluir", type="primary", use_container_width=True):
-        if tipo == "venda":       run("DELETE FROM vendas WHERE id=%s", (id_excluir,))
-        elif tipo == "item_sacola": run("UPDATE sacolas_ativas SET itens=%s WHERE cliente=%s", (json.dumps(extra), id_excluir))
-        elif tipo == "cliente_cadastro": run("DELETE FROM clientes WHERE id=%s", (id_excluir,))
+        if tipo == "venda":
+            run("DELETE FROM vendas WHERE id=%s", (int(id_excluir),))
+        elif tipo == "item_sacola":
+            run("UPDATE sacolas_ativas SET itens=%s WHERE cliente=%s", (json.dumps(extra), id_excluir))
+        elif tipo == "cliente_cadastro":
+            run("DELETE FROM clientes WHERE id=%s", (int(id_excluir),))
+            # Invalida explicitamente o cache completo de clientes
+            st.session_state.pop("_cache_clientes_full", None)
+            st.session_state.pop("_cache_clientes", None)
         st.rerun()
-    if c2.button("Cancelar", use_container_width=True): st.rerun()
+    if c2.button("Cancelar", use_container_width=True):
+        st.rerun()
 
 
 # ─────────────────────────────────────────────
