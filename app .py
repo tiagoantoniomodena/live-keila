@@ -291,20 +291,20 @@ def gerar_imagem_cupom(cliente, itens, frete, subtotal, total_geral, data_venda=
     # ── Corrige encoding (ç, ã, etc.) ──
     cliente = fix_encoding(cliente or "")
     itens   = [{**i, "nome": fix_encoding(i.get("nome", ""))} for i in itens]
-
+ 
     # ── Paleta ──
     BG      = (28,  28,  28)
     FG      = (220, 220, 220)
     FG_DIM  = (160, 160, 160)
     AMARELO = (255, 220,  80)
     VERDE   = (100, 220, 130)
-
+ 
     # ── Fontes mono (DejaVu suporta ç, ã, etc.) ──
     FONT_R = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
     FONT_B = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf"
     FSIZE    = 19
     FSIZE_SM = 16
-
+ 
     try:
         fb    = ImageFont.truetype(FONT_B, FSIZE)
         fr    = ImageFont.truetype(FONT_R, FSIZE)
@@ -312,23 +312,23 @@ def gerar_imagem_cupom(cliente, itens, frete, subtotal, total_geral, data_venda=
         fr_sm = ImageFont.truetype(FONT_R, FSIZE_SM)
     except Exception:
         fb = fr = fb_sm = fr_sm = ImageFont.load_default()
-
+ 
     # ── Dimensões baseadas em char width mono ──
     COLS  = 44
     cw    = fr.getbbox("=")[2]
     PAD_X = 22
     PAD_Y = 18
     LIN_H = FSIZE + 11
-
+ 
     largura  = cw * COLS + PAD_X * 2
     n_linhas = 14 + max(len(itens), 1) + (1 if frete > 0 else 0)
     altura   = PAD_Y * 2 + LIN_H * n_linhas + 20
-
+ 
     img  = Image.new("RGB", (largura, altura), BG)
     draw = ImageDraw.Draw(img)
-
+ 
     y = [PAD_Y]   # lista para permitir escrita dentro de closures
-
+ 
     def ln(txt, fonte=None, cor=FG, center=False):
         f = fonte or fr
         if center:
@@ -338,10 +338,10 @@ def gerar_imagem_cupom(cliente, itens, frete, subtotal, total_geral, data_venda=
             x = PAD_X
         draw.text((x, y[0]), txt, cor, font=f)
         y[0] += LIN_H
-
+ 
     def sep(char="="):
         ln(char * COLS, cor=FG_DIM)
-
+ 
     def ln_item(nome, qtd, unit, tot):
         # DESCRIÇÃO 20 chars | QTD 4 | UNIT 9 | TOTAL 9
         n = nome[:20].ljust(20)
@@ -349,54 +349,54 @@ def gerar_imagem_cupom(cliente, itens, frete, subtotal, total_geral, data_venda=
         u = f"{float(unit):,.2f}".replace(",", ".").rjust(9)
         t = f"{float(tot):,.2f}".replace(",", ".").rjust(9)
         ln(f" {n}{q}{u}{t}")
-
+ 
     def ln_valor(label, valor, fonte=None, cor=FG):
         v      = f"R$ {valor:,.2f}".replace(",", ".")
         espaco = COLS - len(label) - len(v)
         ln(f"{label}{' ' * max(espaco, 1)}{v}", fonte=fonte or fb, cor=cor)
-
+ 
     # ── Monta o cupom ──
     sep("=")
     ln(" LIVE DA KEILA", fonte=fb, center=True)
     sep("=")
     ln(f" Data: {data_venda.split(' ')[0]}", cor=FG_DIM)
     sep("-")
-
+ 
     # Cabeçalho da tabela
     cab = f" {'DESCRIÇÃO'.ljust(20)}{'QTD'.rjust(4)}{'UNIT'.rjust(9)}{'TOTAL'.rjust(9)}"
     ln(cab, fonte=fb)
     sep("-")
-
+ 
     # Itens
     for i in itens:
         s = float(i["preco"]) * int(i["qtd"])
         ln_item(i["nome"], i["qtd"], i["preco"], s)
-
+ 
     sep("-")
-
+ 
     # Subtotal e frete
     ln_valor("SUBTOTAL:", subtotal)
     if frete > 0:
         ln_valor("FRETE:", frete)
-
+ 
     sep("-")
     ln_valor("TOTAL A PAGAR:", total_geral, fonte=fb, cor=AMARELO)
     sep("=")
-
+ 
     # Rodapé PIX
     ln("", cor=FG)
     ln(" PAGAMENTO VIA PIX (CHAVE):", fonte=fb_sm, cor=FG_DIM, center=True)
     ln("keilarochadesigner@gmail.com", fonte=fr_sm, cor=VERDE, center=True)
     ln("", cor=FG)
     sep("=")
-
+ 
     # Recorta altura real usada
     img_final = img.crop((0, 0, largura, min(y[0] + PAD_Y, altura)))
-
+ 
     buf = io.BytesIO()
     img_final.save(buf, format="JPEG", quality=97)
     return buf.getvalue()
-
+ 
 
 
 # ─────────────────────────────────────────────
