@@ -107,23 +107,13 @@ input[type="text"], input[type="number"] { cursor: text; }
     letter-spacing: 0.07em;
     padding: 0 0 4px 0;
 }
-/* ── Botão toggle da sacola — discreto, pequeno ── */
+/* ── Botão toggle da sacola — completamente oculto, card todo clica ── */
 div[data-testid="stVerticalBlockBorderWrapper"] button[kind="secondary"] {
-    background: transparent !important;
-    border: none !important;
-    border-top: 1px solid rgba(255,255,255,0.05) !important;
-    color: #374151 !important;
-    font-size: 0.7rem !important;
-    padding: 2px 4px !important;
-    min-height: 0 !important;
-    height: 24px !important;
-    margin-top: 2px !important;
-    border-radius: 0 !important;
+    display: none !important;
 }
-div[data-testid="stVerticalBlockBorderWrapper"] button[kind="secondary"]:hover {
-    color: #00E676 !important;
-    background: transparent !important;
-    border-top: 1px solid rgba(0,230,118,0.15) !important;
+/* Card da sacola — cursor pointer para indicar que é clicável */
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    cursor: pointer;
 }
 div[data-testid="stVerticalBlockBorderWrapper"] {
     background: #0D1117 !important;
@@ -460,13 +450,47 @@ aba_selecionada = st.radio("Navegação", opcoes_aba, horizontal=True, label_vis
 
 # ── Select-all via components.html (acessa window.parent) ──
 components.html("""<script>
-(function(){var d=window.parent?window.parent.document:document;
-function s(el){if(!el)return;var t=(el.type||'').toLowerCase();
-if(t==='checkbox'||t==='radio'||t==='file'||t==='submit'||t==='button')return;
-setTimeout(function(){try{el.select();}catch(e){}try{el.setSelectionRange(0,99999);}catch(e){}},30);}
-d.addEventListener('focusin',function(e){s(e.target);},true);
-d.addEventListener('pointerdown',function(e){if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')s(e.target);},true);})();
-</script>""",height=0)
+(function(){
+    var d = window.parent ? window.parent.document : document;
+
+    /* Select all on focus */
+    function sel(el){
+        if(!el)return;
+        var t=(el.type||'').toLowerCase();
+        if(t==='checkbox'||t==='radio'||t==='file'||t==='submit'||t==='button')return;
+        setTimeout(function(){try{el.select();}catch(e){}try{el.setSelectionRange(0,99999);}catch(e){}},30);
+    }
+    d.addEventListener('focusin',function(e){sel(e.target);},true);
+    d.addEventListener('pointerdown',function(e){
+        if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')sel(e.target);
+    },true);
+
+    /* Card da sacola clicável — delega para o botão oculto dentro do card */
+    function bindCards(){
+        d.querySelectorAll('[data-testid="stVerticalBlockBorderWrapper"]').forEach(function(card){
+            if(card._cardBound) return;
+            card._cardBound = true;
+            card.addEventListener('click', function(e){
+                /* Ignora cliques em botões internos, inputs, selects */
+                var tag = (e.target.tagName||'').toLowerCase();
+                if(tag==='button'||tag==='input'||tag==='select'||
+                   tag==='textarea'||tag==='label'||tag==='svg'||tag==='path') return;
+                /* Encontra o botão toggle oculto (botão com texto " " ou vazio) */
+                var btns = card.querySelectorAll('button');
+                for(var i=0;i<btns.length;i++){
+                    var txt = btns[i].innerText.trim();
+                    if(txt===''||txt===' '){
+                        btns[i].click();
+                        break;
+                    }
+                }
+            });
+        });
+    }
+    bindCards();
+    new MutationObserver(bindCards).observe(d.body,{childList:true,subtree:true});
+})();
+</script>""", height=0)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -586,16 +610,33 @@ if aba_selecionada == "🛍️ Monitor de Sacolas":
             tot_sac   = sum(float(i["qtd"]) * float(i["preco"]) for i in its)
             qtd_itens = sum(int(i["qtd"]) for i in its)
 
-            # ── Card clicável — visual igual à imagem de referência ──
+            # ── Card com cabeçalho clicável — sem botão visível ──
             expandido = st.session_state.sacola_expandida == cli_id
-            with st.container(border=True):
+            tel_exib  = tel_row if tel_row else "Sem telefone"
+            uid       = cli_id.replace(" ", "_")
 
-                # Cabeçalho: HTML puro para layout exato (nome/tel esq, valor/itens dir)
-                tel_exib = tel_row if tel_row else "Sem telefone"
+            with st.container(border=True):
+                # CSS específico para este card: botão totalmente transparente
                 st.markdown(f"""
+                <style>
+                div[data-testid="stVerticalBlockBorderWrapper"]:has(
+                    button[data-testid="baseButton-secondary"][aria-label="toggle_{uid}"]
+                ) button[aria-label="toggle_{uid}"] {{
+                    background: transparent !important;
+                    border: none !important;
+                    padding: 6px 4px 10px 4px !important;
+                    width: 100% !important;
+                    text-align: left !important;
+                    cursor: pointer !important;
+                    color: transparent !important;
+                    height: 0px !important;
+                    min-height: 0px !important;
+                    overflow: hidden !important;
+                    display: none !important;
+                }}
+                </style>
                 <div style="display:flex;justify-content:space-between;align-items:center;
-                            padding:2px 4px 6px 4px;cursor:pointer;"
-                     onclick="void(0)">
+                            padding:4px 2px 8px 2px;">
                     <div>
                         <div style="font-size:0.95rem;font-weight:700;color:#F9FAFB;
                                     display:flex;align-items:center;gap:6px;">
@@ -616,12 +657,8 @@ if aba_selecionada == "🛍️ Monitor de Sacolas":
                 </div>
                 """, unsafe_allow_html=True)
 
-                # Botão toggle invisível — ocupa espaço mínimo, faz o clique
-                if st.button(
-                    "▼ abrir" if not expandido else "▲ fechar",
-                    key=f"toggle_{cli_id}",
-                    use_container_width=True,
-                ):
+                # Botão oculto via CSS — clique no retângulo todo dispara ele
+                if st.button(" ", key=f"toggle_{cli_id}", use_container_width=True):
                     st.session_state.sacola_expandida = None if expandido else cli_id
                     st.rerun()
 
