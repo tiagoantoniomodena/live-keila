@@ -107,7 +107,24 @@ input[type="text"], input[type="number"] { cursor: text; }
     letter-spacing: 0.07em;
     padding: 0 0 4px 0;
 }
-/* Faz o st.container(border=True) da sacola ter visual de card escuro */
+/* ── Botão toggle da sacola — parece card, não botão ── */
+div[data-testid="stVerticalBlockBorderWrapper"] > div > div:first-child button {
+    background: transparent !important;
+    border: none !important;
+    color: #F9FAFB !important;
+    font-weight: 600 !important;
+    font-size: 0.88rem !important;
+    text-align: left !important;
+    padding: 6px 4px !important;
+    cursor: pointer !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+div[data-testid="stVerticalBlockBorderWrapper"] > div > div:first-child button:hover {
+    color: #00E676 !important;
+    background: transparent !important;
+}
 div[data-testid="stVerticalBlockBorderWrapper"] {
     background: #0D1117 !important;
     border-color: rgba(255,255,255,0.09) !important;
@@ -285,25 +302,25 @@ def carregar_itens(json_str):
 # ─────────────────────────────────────────────
 def gerar_imagem_cupom(cliente, itens, frete, subtotal, total_geral, data_venda=""):
     """
-    Cupom estilo terminal — fundo escuro, fonte mono, bordas com = e -.
-    Visual idêntico ao cupom de referência da Live da Keila.
+    Cupom fundo branco, fonte DejaVu Mono (suporte completo ç ã ê),
+    layout responsivo com colunas baseadas em char width mono.
     """
     # ── Corrige encoding (ç, ã, etc.) ──
     cliente = fix_encoding(cliente or "")
     itens   = [{**i, "nome": fix_encoding(i.get("nome", ""))} for i in itens]
 
-    # ── Paleta ──
-    BG      = (28,  28,  28)
-    FG      = (220, 220, 220)
-    FG_DIM  = (160, 160, 160)
-    AMARELO = (255, 220,  80)
-    VERDE   = (100, 220, 130)
+    # ── Paleta fundo branco ──
+    BG      = (255, 255, 255)
+    PRETO   = (20,  20,  20)
+    CINZA   = (130, 130, 130)
+    CINZA_L = (200, 200, 200)
+    VERM    = (200, 40,  40)
 
-    # ── Fontes mono (DejaVu suporta ç, ã, etc.) ──
+    # ── Fonte DejaVu Mono — suporte completo a UTF-8 ──
     FONT_R = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
     FONT_B = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf"
-    FSIZE    = 19
-    FSIZE_SM = 16
+    FSIZE    = 18
+    FSIZE_SM = 15
 
     try:
         fb    = ImageFont.truetype(FONT_B, FSIZE)
@@ -313,23 +330,23 @@ def gerar_imagem_cupom(cliente, itens, frete, subtotal, total_geral, data_venda=
     except Exception:
         fb = fr = fb_sm = fr_sm = ImageFont.load_default()
 
-    # ── Dimensões baseadas em char width mono ──
-    COLS  = 44
-    cw    = fr.getbbox("=")[2]
-    PAD_X = 22
-    PAD_Y = 18
-    LIN_H = FSIZE + 11
+    # ── Dimensões responsivas baseadas em char width mono ──
+    COLS  = 46
+    cw    = fr.getbbox("A")[2]   # largura de 1 char (mono = constante)
+    PAD_X = 28
+    PAD_Y = 24
+    LIN_H = FSIZE + 12
 
     largura  = cw * COLS + PAD_X * 2
-    n_linhas = 14 + max(len(itens), 1) + (1 if frete > 0 else 0)
-    altura   = PAD_Y * 2 + LIN_H * n_linhas + 20
+    n_linhas = 16 + max(len(itens), 1) + (1 if frete > 0 else 0)
+    altura   = PAD_Y * 2 + LIN_H * n_linhas + 40
 
     img  = Image.new("RGB", (largura, altura), BG)
     draw = ImageDraw.Draw(img)
 
-    y = [PAD_Y]   # lista para permitir escrita dentro de closures
+    y = [PAD_Y]
 
-    def ln(txt, fonte=None, cor=FG, center=False):
+    def ln(txt="", fonte=None, cor=PRETO, center=False):
         f = fonte or fr
         if center:
             bb = draw.textbbox((0, 0), txt, font=f)
@@ -339,56 +356,58 @@ def gerar_imagem_cupom(cliente, itens, frete, subtotal, total_geral, data_venda=
         draw.text((x, y[0]), txt, cor, font=f)
         y[0] += LIN_H
 
-    def sep(char="="):
-        ln(char * COLS, cor=FG_DIM)
+    def sep(char="=", cor=CINZA_L):
+        draw.line((PAD_X, y[0] + LIN_H // 2 - 1,
+                   largura - PAD_X, y[0] + LIN_H // 2 - 1), cor, 1)
+        y[0] += LIN_H
 
     def ln_item(nome, qtd, unit, tot):
-        # DESCRIÇÃO 20 chars | QTD 4 | UNIT 9 | TOTAL 9
-        n = nome[:20].ljust(20)
+        # DESCRIÇÃO 22 chars | QTD 4 | UNIT 10 | TOTAL 10
+        n = nome[:22].ljust(22)
         q = str(int(qtd)).zfill(2).rjust(4)
-        u = f"{float(unit):,.2f}".replace(",", ".").rjust(9)
-        t = f"{float(tot):,.2f}".replace(",", ".").rjust(9)
-        ln(f" {n}{q}{u}{t}")
+        u = f"{float(unit):.2f}".rjust(10)
+        t = f"{float(tot):.2f}".rjust(10)
+        ln(f"{n}{q}{u}{t}")
 
-    def ln_valor(label, valor, fonte=None, cor=FG):
-        v      = f"R$ {valor:,.2f}".replace(",", ".")
+    def ln_valor(label, valor, fonte=None, cor=PRETO):
+        v      = f"R$ {valor:.2f}"
         espaco = COLS - len(label) - len(v)
-        ln(f"{label}{' ' * max(espaco, 1)}{v}", fonte=fonte or fb, cor=cor)
+        ln(f"{label}{' ' * max(espaco, 2)}{v}", fonte=fonte or fr, cor=cor)
 
     # ── Monta o cupom ──
-    sep("=")
+    sep("=", CINZA_L)
     ln(" LIVE DA KEILA", fonte=fb, center=True)
-    sep("=")
-    ln(f" Data: {data_venda.split(' ')[0]}", cor=FG_DIM)
-    sep("-")
+    sep("=", CINZA_L)
+    ln(f" Data: {data_venda.split(' ')[0]}", cor=CINZA)
+    sep("-", CINZA_L)
 
     # Cabeçalho da tabela
-    cab = f" {'DESCRIÇÃO'.ljust(20)}{'QTD'.rjust(4)}{'UNIT'.rjust(9)}{'TOTAL'.rjust(9)}"
-    ln(cab, fonte=fb)
-    sep("-")
+    cab = f"{'DESCRIÇÃO'.ljust(22)}{'QTD'.rjust(4)}{'UNIT'.rjust(10)}{'TOTAL'.rjust(10)}"
+    ln(f" {cab}", fonte=fb)
+    sep("-", CINZA_L)
 
     # Itens
     for i in itens:
         s = float(i["preco"]) * int(i["qtd"])
-        ln_item(i["nome"], i["qtd"], i["preco"], s)
+        ln_item(" " + i["nome"], i["qtd"], i["preco"], s)
 
-    sep("-")
+    sep("-", CINZA_L)
 
     # Subtotal e frete
     ln_valor("SUBTOTAL:", subtotal)
     if frete > 0:
         ln_valor("FRETE:", frete)
 
-    sep("-")
-    ln_valor("TOTAL A PAGAR:", total_geral, fonte=fb, cor=AMARELO)
-    sep("=")
+    sep("-", CINZA_L)
+    ln_valor("TOTAL A PAGAR:", total_geral, fonte=fb, cor=VERM)
+    sep("=", CINZA_L)
 
     # Rodapé PIX
-    ln("", cor=FG)
-    ln(" PAGAMENTO VIA PIX (CHAVE):", fonte=fb_sm, cor=FG_DIM, center=True)
-    ln("keilarochadesigner@gmail.com", fonte=fr_sm, cor=VERDE, center=True)
-    ln("", cor=FG)
-    sep("=")
+    ln()
+    ln("PAGAMENTO VIA PIX (CHAVE):", fonte=fb_sm, cor=CINZA, center=True)
+    ln("keilarochadesigner@gmail.com", fonte=fr_sm, cor=(0, 150, 80), center=True)
+    ln()
+    sep("=", CINZA_L)
 
     # Recorta altura real usada
     img_final = img.crop((0, 0, largura, min(y[0] + PAD_Y, altura)))
@@ -543,7 +562,7 @@ if aba_selecionada == "🛍️ Monitor de Sacolas":
                 if p.strip():
                     it.append({"qtd": q, "nome": p.strip(), "preco": pr})
                 tel_salvo = tel_nova if tel_nova else (res["telefone"] if res else "")
-                # MELHORIA 4: ultima_alteracao = agora → sobe para o topo
+                # Salva sacola
                 run("""
                     INSERT INTO sacolas_ativas (cliente, telefone, itens, ultima_alteracao)
                     VALUES (%s,%s,%s,%s)
@@ -551,9 +570,13 @@ if aba_selecionada == "🛍️ Monitor de Sacolas":
                         telefone=EXCLUDED.telefone, itens=EXCLUDED.itens,
                         ultima_alteracao=EXCLUDED.ultima_alteracao
                 """, (cli_nome, tel_salvo, json.dumps(it), datetime.now().isoformat()))
-                # MELHORIA 1: incrementa chave para resetar todos os widgets
+                # ALTERAÇÃO 3: salva cliente no cadastro se não existir
+                run("""
+                    INSERT INTO clientes (nome, telefone, data_cadastro)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT DO NOTHING
+                """, (cli_nome, tel_salvo, datetime.now().strftime("%d/%m/%Y %H:%M")))
                 st.session_state.form_reset_key += 1
-                # Expande a sacola recém-criada
                 st.session_state.sacola_expandida = cli_nome
                 st.rerun()
             else:
@@ -581,25 +604,23 @@ if aba_selecionada == "🛍️ Monitor de Sacolas":
             tot_sac   = sum(float(i["qtd"]) * float(i["preco"]) for i in its)
             qtd_itens = sum(int(i["qtd"]) for i in its)
 
-            # ── Card único: cabeçalho + detalhes no mesmo retângulo ──
+            # ── Card único: cabeçalho clicável abre/fecha ──
             expandido = st.session_state.sacola_expandida == cli_id
             with st.container(border=True):
-                # Cabeçalho sempre visível
-                st.markdown(f"""
-                <div class="sacola-header-inner">
-                    <div>
-                        <div class="sacola-nome">🛍️ {cli_id.upper()}</div>
-                        <div class="sacola-tel">📞 {tel_row if tel_row else 'Sem telefone'}</div>
-                    </div>
-                    <div>
-                        <div class="sacola-total">R$ {tot_sac:.2f}</div>
-                        <div class="sacola-itens-count">{qtd_itens} item(ns)</div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
+                # Botão invisível sobre o cabeçalho — clique abre/fecha
+                btn_label = f"🛍️ {cli_id.upper()}  |  📞 {tel_row or 'Sem telefone'}  |  R$ {tot_sac:.2f}  |  {qtd_itens} item(ns)"
+                if st.button(
+                    btn_label,
+                    key=f"toggle_{cli_id}",
+                    use_container_width=True,
+                ):
+                    if expandido:
+                        st.session_state.sacola_expandida = None
+                    else:
+                        st.session_state.sacola_expandida = cli_id
+                    st.rerun()
 
-                with st.expander("▼ Ver detalhes / editar", expanded=expandido):
-                        # variável novo_tel usada no botão finalizar
+                if expandido:
                         novo_tel = tel_row
 
                         # Cabeçalho de colunas
