@@ -302,118 +302,89 @@ def carregar_itens(json_str):
 # ─────────────────────────────────────────────
 def gerar_imagem_cupom(cliente, itens, frete, subtotal, total_geral, data_venda=""):
     """
-    Cupom fundo branco, fonte DejaVu Mono (suporte completo ç ã ê),
-    layout responsivo com colunas baseadas em char width mono.
+    Gera o cupom com fundo branco e fonte DejaVu Mono para suporte a UTF-8.
+    O layout é calculado dinamicamente com base na largura dos caracteres.
     """
-    # ── Corrige encoding (ç, ã, etc.) ──
+    # Correção de encoding para garantir exibição de caracteres especiais
     cliente = fix_encoding(cliente or "")
-    itens   = [{**i, "nome": fix_encoding(i.get("nome", ""))} for i in itens]
+    itens = [{**i, "nome": fix_encoding(i.get("nome", ""))} for i in itens]
 
-    # ── Paleta fundo branco ──
-    BG      = (255, 255, 255)
-    PRETO   = (20,  20,  20)
-    CINZA   = (130, 130, 130)
+    # Configuração de Cores
+    BG, PRETO, CINZA, VERM = (255, 255, 255), (20, 20, 20), (130, 130, 130), (200, 40, 40)
     CINZA_L = (200, 200, 200)
-    VERM    = (200, 40,  40)
 
-    # ── Fonte DejaVu Mono — suporte completo a UTF-8 ──
+    # Caminhos das fontes no ambiente Linux (Streamlit Cloud)
     FONT_R = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
     FONT_B = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf"
-    FSIZE    = 18
-    FSIZE_SM = 15
+    FSIZE, FSIZE_SM = 18, 15
 
     try:
-        fb    = ImageFont.truetype(FONT_B, FSIZE)
-        fr    = ImageFont.truetype(FONT_R, FSIZE)
+        fb = ImageFont.truetype(FONT_B, FSIZE)
+        fr = ImageFont.truetype(FONT_R, FSIZE)
         fb_sm = ImageFont.truetype(FONT_B, FSIZE_SM)
         fr_sm = ImageFont.truetype(FONT_R, FSIZE_SM)
     except Exception:
         fb = fr = fb_sm = fr_sm = ImageFont.load_default()
 
-    # ── Dimensões responsivas baseadas em char width mono ──
-    COLS  = 46
-    cw    = fr.getbbox("A")[2]   # largura de 1 char (mono = constante)
-    PAD_X = 28
-    PAD_Y = 24
+    # Cálculo de layout responsivo baseado em Grid Mono
+    COLS = 46
+    cw = fr.getbbox("A")[2]  # Largura exata de 1 caractere mono
+    PAD_X, PAD_Y = 28, 24
     LIN_H = FSIZE + 12
 
-    largura  = cw * COLS + PAD_X * 2
+    largura = cw * COLS + PAD_X * 2
     n_linhas = 16 + max(len(itens), 1) + (1 if frete > 0 else 0)
-    altura   = PAD_Y * 2 + LIN_H * n_linhas + 40
+    altura = PAD_Y * 2 + LIN_H * n_linhas + 40
 
-    img  = Image.new("RGB", (largura, altura), BG)
+    img = Image.new("RGB", (largura, altura), BG)
     draw = ImageDraw.Draw(img)
-
     y = [PAD_Y]
 
     def ln(txt="", fonte=None, cor=PRETO, center=False):
         f = fonte or fr
-        if center:
-            bb = draw.textbbox((0, 0), txt, font=f)
-            x  = (largura - (bb[2] - bb[0])) // 2
-        else:
-            x = PAD_X
+        x = (largura - (draw.textbbox((0, 0), txt, font=f)[2])) // 2 if center else PAD_X
         draw.text((x, y[0]), txt, cor, font=f)
         y[0] += LIN_H
 
-    def sep(char="=", cor=CINZA_L):
-        draw.line((PAD_X, y[0] + LIN_H // 2 - 1,
-                   largura - PAD_X, y[0] + LIN_H // 2 - 1), cor, 1)
+    def sep():
+        draw.line((PAD_X, y[0] + LIN_H // 2, largura - PAD_X, y[0] + LIN_H // 2), CINZA_L, 1)
         y[0] += LIN_H
 
-    def ln_item(nome, qtd, unit, tot):
-        # DESCRIÇÃO 22 chars | QTD 4 | UNIT 10 | TOTAL 10
-        n = nome[:22].ljust(22)
-        q = str(int(qtd)).zfill(2).rjust(4)
-        u = f"{float(unit):.2f}".rjust(10)
-        t = f"{float(tot):.2f}".rjust(10)
-        ln(f"{n}{q}{u}{t}")
-
-    def ln_valor(label, valor, fonte=None, cor=PRETO):
-        v      = f"R$ {valor:.2f}"
-        espaco = COLS - len(label) - len(v)
-        ln(f"{label}{' ' * max(espaco, 2)}{v}", fonte=fonte or fr, cor=cor)
-
-    # ── Monta o cupom ──
-    sep("=", CINZA_L)
-    ln(" LIVE DA KEILA", fonte=fb, center=True)
-    sep("=", CINZA_L)
+    # Renderização do Conteúdo
+    sep()
+    ln("LIVE DA KEILA", fonte=fb, center=True)
+    sep()
     ln(f" Data: {data_venda.split(' ')[0]}", cor=CINZA)
-    sep("-", CINZA_L)
+    sep()
 
-    # Cabeçalho da tabela
-    cab = f"{'DESCRIÇÃO'.ljust(22)}{'QTD'.rjust(4)}{'UNIT'.rjust(10)}{'TOTAL'.rjust(10)}"
-    ln(f" {cab}", fonte=fb)
-    sep("-", CINZA_L)
+    # Cabeçalho da Tabela (Alinhamento manual por colunas)
+    ln(f"{'DESCRIÇÃO'.ljust(22)}{'QTD'.rjust(4)}{'UNIT'.rjust(10)}{'TOTAL'.rjust(10)}", fonte=fb)
+    sep()
 
-    # Itens
     for i in itens:
-        s = float(i["preco"]) * int(i["qtd"])
-        ln_item(" " + i["nome"], i["qtd"], i["preco"], s)
+        nome_p = i["nome"][:21].ljust(22)
+        qtd_p = str(int(i["qtd"])).rjust(4)
+        unit_p = f"{float(i['preco']):.2f}".rjust(10)
+        tot_p = f"{(float(i['preco']) * int(i['qtd'])):.2f}".rjust(10)
+        ln(f"{nome_p}{qtd_p}{unit_p}{tot_p}")
 
-    sep("-", CINZA_L)
+    sep()
+    # Linhas de Valores
+    for label, valor, font, cor in [
+        ("SUBTOTAL:", subtotal, fr, PRETO),
+        ("FRETE:", frete, fr, PRETO) if frete > 0 else (None, 0, None, None),
+        ("TOTAL A PAGAR:", total_geral, fb, VERM)
+    ]:
+        if label:
+            v_str = f"R$ {valor:.2f}"
+            ln(f"{label}{' ' * (COLS - len(label) - len(v_str))}{v_str}", fonte=font, cor=cor)
 
-    # Subtotal e frete
-    ln_valor("SUBTOTAL:", subtotal)
-    if frete > 0:
-        ln_valor("FRETE:", frete)
-
-    sep("-", CINZA_L)
-    ln_valor("TOTAL A PAGAR:", total_geral, fonte=fb, cor=VERM)
-    sep("=", CINZA_L)
-
-    # Rodapé PIX
-    ln()
-    ln("PAGAMENTO VIA PIX (CHAVE):", fonte=fb_sm, cor=CINZA, center=True)
+    ln(); ln("PAGAMENTO VIA PIX (CHAVE):", fonte=fb_sm, cor=CINZA, center=True)
     ln("keilarochadesigner@gmail.com", fonte=fr_sm, cor=(0, 150, 80), center=True)
-    ln()
-    sep("=", CINZA_L)
-
-    # Recorta altura real usada
-    img_final = img.crop((0, 0, largura, min(y[0] + PAD_Y, altura)))
-
+    
+    img_final = img.crop((0, 0, largura, y[0] + PAD_Y))
     buf = io.BytesIO()
-    img_final.save(buf, format="JPEG", quality=97)
+    img_final.save(buf, format="JPEG", quality=95)
     return buf.getvalue()
 
 
