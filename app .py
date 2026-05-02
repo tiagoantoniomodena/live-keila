@@ -302,111 +302,107 @@ def carregar_itens(json_str):
 # ─────────────────────────────────────────────
 def gerar_imagem_cupom(cliente, itens, frete, subtotal, total_geral, data_venda=""):
     """
-    Gera o cupom com alinhamento rigoroso usando fonte monoespaçada.
+    Gera o cupom baixando a fonte DejaVu Mono para garantir o alinhamento perfeito.
     """
+    import requests
+    import os
+
     # 1. Tratamento de texto e encoding
     cliente = fix_encoding(cliente or "")
     itens = [{**i, "nome": fix_encoding(i.get("nome", ""))} for i in itens]
     
-    # 2. Configurações de Estilo
-    BG_COLOR = (255, 255, 255)
-    TXT_COLOR = (30, 30, 30)
-    RED_COLOR = (200, 40, 40)
-    LINE_COLOR = (220, 220, 220)
+    # 2. Garantir a Fonte Mono (Download se não existir)
+    font_path = "/tmp/DejaVuSansMono.ttf"
+    font_bold_path = "/tmp/DejaVuSansMono-Bold.ttf"
+    
+    def baixar_fonte(url, path):
+        if not os.path.exists(path):
+            r = requests.get(url)
+            with open(path, "wb") as f:
+                f.write(r.content)
 
-    # 3. Carregamento da Fonte Mono (Essencial para alinhamento)
-    # No Streamlit Cloud, esses caminhos são padrão para DejaVu
     try:
-        f_bold = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf", 20)
-        f_reg = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", 18)
-        f_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", 14)
+        baixar_fonte("https://github.com/flybywiresim/a32nx/raw/master/A32NX_Fonts/DejaVuSansMono.ttf", font_path)
+        baixar_fonte("https://github.com/flybywiresim/a32nx/raw/master/A32NX_Fonts/DejaVuSansMono-Bold.ttf", font_bold_path)
+        f_bold = ImageFont.truetype(font_bold_path, 22)
+        f_reg = ImageFont.truetype(font_path, 18)
+        f_small = ImageFont.truetype(font_path, 15)
     except:
-        # Fallback caso a fonte não seja encontrada
         f_bold = f_reg = f_small = ImageFont.load_default()
 
-    # 4. Cálculo de Espaçamento
-    # Definimos um total de 42 caracteres de largura
-    CHARS_TOTAL = 42
-    PAD_X = 40
-    LINE_HEIGHT = 30
-    
-    # Altura dinâmica baseada na quantidade de itens
-    largura_px = 600
-    altura_px = 350 + (len(itens) * LINE_HEIGHT)
+    # 3. Configurações de Layout
+    BG_COLOR = (255, 255, 255)
+    TXT_COLOR = (40, 40, 40)
+    largura_px = 620
+    # Altura dinâmica: cabeçalho(200) + itens(len*35) + rodape(200)
+    altura_px = 400 + (len(itens) * 35)
     
     img = Image.new("RGB", (largura_px, altura_px), BG_COLOR)
     draw = ImageDraw.Draw(img)
-    
-    y = 40
+    y = 50
 
     def escrever_linha(texto, fonte, cor=TXT_COLOR, centro=False):
         nonlocal y
         if centro:
-            # Centralização manual para fontes mono[cite: 1]
-            largura_texto = draw.textbbox((0, 0), texto, font=fonte)[2]
-            x = (largura_px - largura_texto) // 2
+            w = draw.textbbox((0, 0), texto, font=fonte)[2]
+            x = (largura_px - w) // 2
         else:
-            x = PAD_X
+            x = 45
         draw.text((x, y), texto, fill=cor, font=fonte)
-        y += LINE_HEIGHT
+        y += 32
 
-    def desenhar_separador():
+    def separador():
         nonlocal y
         y += 10
-        draw.line((PAD_X, y, largura_px - PAD_X, y), fill=LINE_COLOR, width=1)
+        draw.line((45, y, largura_px - 45, y), fill=(200, 200, 200), width=1)
         y += 20
 
-    # --- MONTAGEM DO CONTEÚDO ---
-    
-    desenhar_separador()
+    # --- DESENHO DO CUPOM ---
+    separador()
     escrever_linha("LIVE DA KEILA", f_bold, centro=True)
-    desenhar_separador()
+    separador()
     
     escrever_linha(f"DATA: {data_venda.split(' ')[0]}", f_small, cor=(100, 100, 100))
     escrever_linha(f"CLIENTE: {cliente.upper()}", f_reg)
-    desenhar_separador()
+    separador()
 
-    # Cabeçalho das Colunas com espaçamento fixo[cite: 1]
-    # Nome (20 chars) | Qtd (4 chars) | Unit (8 chars) | Total (10 chars)
-    cabecalho = f"{'DESCRIÇÃO'.ljust(20)} {'QTD'.rjust(4)} {'UNIT'.rjust(7)} {'TOTAL'.rjust(8)}"
-    escrever_linha(cabecalho, f_bold)
+    # Cabeçalho rígido: 42 caracteres totais[cite: 1]
+    # Prod(20) | Qtd(4) | Unit(8) | Total(10)
+    cab = f"{'DESCRIÇÃO'.ljust(20)} {'QTD'.rjust(4)} {'UNIT'.rjust(8)} {'TOTAL'.rjust(10)}"
+    escrever_linha(cab, f_bold)
     y += 5
 
-    # Itens da Sacola
     for i in itens:
         nome = i['nome'][:19].ljust(20)
         qtd = str(int(i['qtd'])).rjust(4)
-        unit = f"{float(i['preco']):.2f}".rjust(7)
-        total_item = f"{(int(i['qtd']) * float(i['preco'])):.2f}".rjust(8)
-        escrever_linha(f"{nome} {qtd} {unit} {total_item}", f_reg)
+        unit = f"{float(i['preco']):.2f}".rjust(8)
+        tot = f"{(int(i['qtd']) * float(i['preco'])):.2f}".rjust(10)
+        escrever_linha(f"{nome} {qtd} {unit} {tot}", f_reg)
 
-    desenhar_separador()
+    separador()
+    
+    # Totais alinhados à direita[cite: 1]
+    def resumo(label, valor, fonte, cor=TXT_COLOR):
+        v = f"R$ {valor:.2f}"
+        # Calcula espaços para alinhar label à esquerda e valor à direita
+        texto_completo = f"{label}{' ' * (42 - len(label) - len(v))}{v}"
+        escrever_linha(texto_completo, fonte, cor)
 
-    # Totais[cite: 1]
-    def linha_resumo(label, valor, fonte, cor=TXT_COLOR):
-        v_formatado = f"R$ {valor:.2f}"
-        espacos = CHARS_TOTAL - len(label) - len(v_formatado)
-        escrever_linha(f"{label}{' ' * espacos}{v_formatado}", fonte, cor)
-
-    linha_resumo("SUBTOTAL", subtotal, f_reg)
+    resumo("SUBTOTAL", subtotal, f_reg)
     if frete > 0:
-        linha_resumo("FRETE", frete, f_reg)
+        resumo("FRETE", frete, f_reg)
     
-    y += 10
-    linha_resumo("TOTAL A PAGAR", total_geral, f_bold, RED_COLOR)
+    y += 15
+    resumo("TOTAL A PAGAR", total_geral, f_bold, cor=(200, 40, 40))
     
-    desenhar_separador()
-    
-    # Rodapé PIX
+    separador()
     y += 20
     escrever_linha("PAGAMENTO VIA PIX (CHAVE):", f_small, centro=True, cor=(100, 100, 100))
     escrever_linha("keilarochadesigner@gmail.com", f_reg, centro=True, cor=(0, 120, 60))
 
-    # Corta a imagem para não sobrar espaço em branco embaixo
     img_final = img.crop((0, 0, largura_px, y + 60))
-    
     buf = io.BytesIO()
-    img_final.save(buf, format="JPEG", quality=95)
+    img_final.save(buf, format="JPEG", quality=98)
     return buf.getvalue()
 
 # ─────────────────────────────────────────────
