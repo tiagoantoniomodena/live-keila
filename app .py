@@ -302,91 +302,112 @@ def carregar_itens(json_str):
 # ─────────────────────────────────────────────
 def gerar_imagem_cupom(cliente, itens, frete, subtotal, total_geral, data_venda=""):
     """
-    Gera o cupom com fundo branco e fonte DejaVu Mono para suporte a UTF-8.
-    O layout é calculado dinamicamente com base na largura dos caracteres.
+    Gera o cupom com alinhamento rigoroso usando fonte monoespaçada.
     """
-    # Correção de encoding para garantir exibição de caracteres especiais
+    # 1. Tratamento de texto e encoding
     cliente = fix_encoding(cliente or "")
     itens = [{**i, "nome": fix_encoding(i.get("nome", ""))} for i in itens]
-
-    # Configuração de Cores
-    BG, PRETO, CINZA, VERM = (255, 255, 255), (20, 20, 20), (130, 130, 130), (200, 40, 40)
-    CINZA_L = (200, 200, 200)
-
-    # Caminhos das fontes no ambiente Linux (Streamlit Cloud)
-    FONT_R = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
-    FONT_B = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf"
-    FSIZE, FSIZE_SM = 18, 15
-
-    try:
-        fb = ImageFont.truetype(FONT_B, FSIZE)
-        fr = ImageFont.truetype(FONT_R, FSIZE)
-        fb_sm = ImageFont.truetype(FONT_B, FSIZE_SM)
-        fr_sm = ImageFont.truetype(FONT_R, FSIZE_SM)
-    except Exception:
-        fb = fr = fb_sm = fr_sm = ImageFont.load_default()
-
-    # Cálculo de layout responsivo baseado em Grid Mono
-    COLS = 46
-    cw = fr.getbbox("A")[2]  # Largura exata de 1 caractere mono
-    PAD_X, PAD_Y = 28, 24
-    LIN_H = FSIZE + 12
-
-    largura = cw * COLS + PAD_X * 2
-    n_linhas = 16 + max(len(itens), 1) + (1 if frete > 0 else 0)
-    altura = PAD_Y * 2 + LIN_H * n_linhas + 40
-
-    img = Image.new("RGB", (largura, altura), BG)
-    draw = ImageDraw.Draw(img)
-    y = [PAD_Y]
-
-    def ln(txt="", fonte=None, cor=PRETO, center=False):
-        f = fonte or fr
-        x = (largura - (draw.textbbox((0, 0), txt, font=f)[2])) // 2 if center else PAD_X
-        draw.text((x, y[0]), txt, cor, font=f)
-        y[0] += LIN_H
-
-    def sep():
-        draw.line((PAD_X, y[0] + LIN_H // 2, largura - PAD_X, y[0] + LIN_H // 2), CINZA_L, 1)
-        y[0] += LIN_H
-
-    # Renderização do Conteúdo
-    sep()
-    ln("LIVE DA KEILA", fonte=fb, center=True)
-    sep()
-    ln(f" Data: {data_venda.split(' ')[0]}", cor=CINZA)
-    sep()
-
-    # Cabeçalho da Tabela (Alinhamento manual por colunas)
-    ln(f"{'DESCRIÇÃO'.ljust(22)}{'QTD'.rjust(4)}{'UNIT'.rjust(10)}{'TOTAL'.rjust(10)}", fonte=fb)
-    sep()
-
-    for i in itens:
-        nome_p = i["nome"][:21].ljust(22)
-        qtd_p = str(int(i["qtd"])).rjust(4)
-        unit_p = f"{float(i['preco']):.2f}".rjust(10)
-        tot_p = f"{(float(i['preco']) * int(i['qtd'])):.2f}".rjust(10)
-        ln(f"{nome_p}{qtd_p}{unit_p}{tot_p}")
-
-    sep()
-    # Linhas de Valores
-    for label, valor, font, cor in [
-        ("SUBTOTAL:", subtotal, fr, PRETO),
-        ("FRETE:", frete, fr, PRETO) if frete > 0 else (None, 0, None, None),
-        ("TOTAL A PAGAR:", total_geral, fb, VERM)
-    ]:
-        if label:
-            v_str = f"R$ {valor:.2f}"
-            ln(f"{label}{' ' * (COLS - len(label) - len(v_str))}{v_str}", fonte=font, cor=cor)
-
-    ln(); ln("PAGAMENTO VIA PIX (CHAVE):", fonte=fb_sm, cor=CINZA, center=True)
-    ln("keilarochadesigner@gmail.com", fonte=fr_sm, cor=(0, 150, 80), center=True)
     
-    img_final = img.crop((0, 0, largura, y[0] + PAD_Y))
+    # 2. Configurações de Estilo
+    BG_COLOR = (255, 255, 255)
+    TXT_COLOR = (30, 30, 30)
+    RED_COLOR = (200, 40, 40)
+    LINE_COLOR = (220, 220, 220)
+
+    # 3. Carregamento da Fonte Mono (Essencial para alinhamento)
+    # No Streamlit Cloud, esses caminhos são padrão para DejaVu
+    try:
+        f_bold = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf", 20)
+        f_reg = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", 18)
+        f_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", 14)
+    except:
+        # Fallback caso a fonte não seja encontrada
+        f_bold = f_reg = f_small = ImageFont.load_default()
+
+    # 4. Cálculo de Espaçamento
+    # Definimos um total de 42 caracteres de largura
+    CHARS_TOTAL = 42
+    PAD_X = 40
+    LINE_HEIGHT = 30
+    
+    # Altura dinâmica baseada na quantidade de itens
+    largura_px = 600
+    altura_px = 350 + (len(itens) * LINE_HEIGHT)
+    
+    img = Image.new("RGB", (largura_px, altura_px), BG_COLOR)
+    draw = ImageDraw.Draw(img)
+    
+    y = 40
+
+    def escrever_linha(texto, fonte, cor=TXT_COLOR, centro=False):
+        nonlocal y
+        if centro:
+            # Centralização manual para fontes mono[cite: 1]
+            largura_texto = draw.textbbox((0, 0), texto, font=fonte)[2]
+            x = (largura_px - largura_texto) // 2
+        else:
+            x = PAD_X
+        draw.text((x, y), texto, fill=cor, font=fonte)
+        y += LINE_HEIGHT
+
+    def desenhar_separador():
+        nonlocal y
+        y += 10
+        draw.line((PAD_X, y, largura_px - PAD_X, y), fill=LINE_COLOR, width=1)
+        y += 20
+
+    # --- MONTAGEM DO CONTEÚDO ---
+    
+    desenhar_separador()
+    escrever_linha("LIVE DA KEILA", f_bold, centro=True)
+    desenhar_separador()
+    
+    escrever_linha(f"DATA: {data_venda.split(' ')[0]}", f_small, cor=(100, 100, 100))
+    escrever_linha(f"CLIENTE: {cliente.upper()}", f_reg)
+    desenhar_separador()
+
+    # Cabeçalho das Colunas com espaçamento fixo[cite: 1]
+    # Nome (20 chars) | Qtd (4 chars) | Unit (8 chars) | Total (10 chars)
+    cabecalho = f"{'DESCRIÇÃO'.ljust(20)} {'QTD'.rjust(4)} {'UNIT'.rjust(7)} {'TOTAL'.rjust(8)}"
+    escrever_linha(cabecalho, f_bold)
+    y += 5
+
+    # Itens da Sacola
+    for i in itens:
+        nome = i['nome'][:19].ljust(20)
+        qtd = str(int(i['qtd'])).rjust(4)
+        unit = f"{float(i['preco']):.2f}".rjust(7)
+        total_item = f"{(int(i['qtd']) * float(i['preco'])):.2f}".rjust(8)
+        escrever_linha(f"{nome} {qtd} {unit} {total_item}", f_reg)
+
+    desenhar_separador()
+
+    # Totais[cite: 1]
+    def linha_resumo(label, valor, fonte, cor=TXT_COLOR):
+        v_formatado = f"R$ {valor:.2f}"
+        espacos = CHARS_TOTAL - len(label) - len(v_formatado)
+        escrever_linha(f"{label}{' ' * espacos}{v_formatado}", fonte, cor)
+
+    linha_resumo("SUBTOTAL", subtotal, f_reg)
+    if frete > 0:
+        linha_resumo("FRETE", frete, f_reg)
+    
+    y += 10
+    linha_resumo("TOTAL A PAGAR", total_geral, f_bold, RED_COLOR)
+    
+    desenhar_separador()
+    
+    # Rodapé PIX
+    y += 20
+    escrever_linha("PAGAMENTO VIA PIX (CHAVE):", f_small, centro=True, cor=(100, 100, 100))
+    escrever_linha("keilarochadesigner@gmail.com", f_reg, centro=True, cor=(0, 120, 60))
+
+    # Corta a imagem para não sobrar espaço em branco embaixo
+    img_final = img.crop((0, 0, largura_px, y + 60))
+    
     buf = io.BytesIO()
     img_final.save(buf, format="JPEG", quality=95)
     return buf.getvalue()
-
 
 # ─────────────────────────────────────────────
 # DIALOGS
