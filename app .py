@@ -310,25 +310,25 @@ def gerar_imagem_cupom(cliente, itens, frete, subtotal, total_geral, data_venda=
     cliente = (cliente or "").upper()
     total_itens_qtd = sum(int(i.get("qtd", 0)) for i in itens)
     
-    # 2. Configuração de Fontes (Essencial para o visual idêntico)
+    # 2. Configuração de Fonte (Courier Prime para alinhamento monoespaçado)
     font_path = "/tmp/CourierPrime.ttf"
     if not os.path.exists(font_path):
-        # Usando Courier Prime para aquele aspecto de máquina de escrever/cupom limpo
         url = "https://github.com/google/fonts/raw/main/ofl/courierprime/CourierPrime-Regular.ttf"
         r = requests.get(url)
         with open(font_path, "wb") as f: f.write(r.content)
     
-    # Tamanhos baseados na imagem de referência
     f_reg = ImageFont.truetype(font_path, 17)
     f_title = ImageFont.truetype(font_path, 19)
 
-    # 3. Dimensões do Cupom
-    largura = 600
-    altura = 450 + (len(itens) * 30)
+    # 3. Dimensões do Cupom (Largura aumentada para evitar cortes)
+    largura = 700 
+    altura = 450 + (len(itens) * 35)
     img = Image.new("RGB", (largura, altura), (255, 255, 255))
     draw = ImageDraw.Draw(img)
     
-    y = 40
+    y = 50
+    # Margem esquerda confortável
+    MX = 50 
 
     def ln(txt, fonte=f_reg, cor=(50, 50, 50), center=False):
         nonlocal y
@@ -336,83 +336,55 @@ def gerar_imagem_cupom(cliente, itens, frete, subtotal, total_geral, data_venda=
             w = draw.textbbox((0, 0), txt, font=fonte)[2]
             x = (largura - w) // 2
         else:
-            x = 40
+            x = MX
         draw.text((x, y), txt, fill=cor, font=fonte)
-        y += 30
+        y += 32
 
-    # --- INÍCIO DO DESENHO (IDÊNTICO À IMAGEM) ---
+    # --- INÍCIO DO DESENHO ---
     
     ln("---  LIVE DA KEILA  ---", fonte=f_title, center=True)
     y += 20
     
     ln(f"CLIENTE: {cliente}")
     ln(f"DATA: {data_venda.split(' ')[0]}")
-    y += 10
+    y += 15
 
-    # Cabeçalho da Tabela
-    # ITEM (25) | QTD (5) | UNIT (10) | TOTAL (10)
-    header = f"{'ITEM'.ljust(25)}{'QTD'.rjust(5)}{'UNIT'.rjust(12)}{'TOTAL'.rjust(15)}"
+    # Ajuste de Colunas: Total de 54 caracteres
+    # ITEM(22) | QTD(5) | UNIT(12) | TOTAL(15)
+    header = f"{'ITEM'.ljust(22)}{'QTD'.rjust(5)}{'UNIT'.rjust(12)}{'TOTAL'.rjust(15)}"
     ln(header)
     
-    # Linha separadora simples
-    draw.line((40, y, largura - 40, y), fill=(180, 180, 180), width=1)
+    # Linha separadora
+    draw.line((MX, y, largura - MX, y), fill=(180, 180, 180), width=1)
     y += 20
 
-    # Listagem de Itens
+    # Itens[cite: 1]
     for i in itens:
-        nome = i['nome'][:24].ljust(25)
+        nome = i['nome'][:21].ljust(22)
         qtd = str(int(i['qtd'])).rjust(5)
         unit = f"{float(i['preco']):.2f}".rjust(12)
         total_it = f"R$ { (int(i['qtd']) * float(i['preco'])):.2f}".rjust(15)
         ln(f"{nome}{qtd}{unit}{total_it}")
 
     y += 10
-    draw.line((40, y, largura - 40, y), fill=(180, 180, 180), width=1)
+    draw.line((MX, y, largura - MX, y), fill=(180, 180, 180), width=1)
     y += 30
 
     # Resumo Final[cite: 1]
     ln(f"TOTAL ITENS: {total_itens_qtd}")
     ln(f"SUBTOTAL: R$ {subtotal:.2f}")
+    if frete > 0:
+        ln(f"FRETE: R$ {frete:.2f}")
+    
     y += 20
-    ln(f"TOTAL GERAL: R$ {total_geral:.2f}", cor=(230, 100, 100)) # Tom rosado/avermelhado leve
+    # Cor avermelhada suave para o Total Geral conforme a imagem[cite: 1]
+    ln(f"TOTAL GERAL: R$ {total_geral:.2f}", cor=(230, 80, 80)) 
 
-    # Corte final e retorno
-    img_final = img.crop((0, 0, largura, y + 60))
+    # Corte final[cite: 1]
+    img_final = img.crop((0, 0, largura, y + 70))
     buf = io.BytesIO()
     img_final.save(buf, format="PNG")
     return buf.getvalue()
-
-# ─────────────────────────────────────────────
-# DIALOGS
-# ─────────────────────────────────────────────
-@st.dialog("Confirmar Finalização")
-def confirmar_finalizar_compra(cliente, telefone, itens, total):
-    st.warning(f"Finalizar venda de **{cliente.upper()}**?")
-    c1, c2 = st.columns(2)
-    if c1.button("✅ Sim, Finalizar", type="primary", use_container_width=True):
-        run("INSERT INTO vendas (data,cliente,telefone,itens,frete,total) VALUES (%s,%s,%s,%s,%s,%s)",
-            (datetime.now().strftime("%d/%m/%Y %H:%M"), cliente, telefone, json.dumps(itens), 0, total))
-        run("DELETE FROM sacolas_ativas WHERE cliente=%s", (cliente,))
-        st.rerun()
-    if c2.button("Cancelar", use_container_width=True): st.rerun()
-
-@st.dialog("Confirmar Exclusão")
-def confirmar_exclusao(tipo, id_excluir, extra=None):
-    st.error("Tem certeza que deseja excluir este item?")
-    c1, c2 = st.columns(2)
-    if c1.button("🗑️ Sim, Excluir", type="primary", use_container_width=True):
-        if tipo == "venda":
-            run("DELETE FROM vendas WHERE id=%s", (int(id_excluir),))
-        elif tipo == "item_sacola":
-            run("UPDATE sacolas_ativas SET itens=%s WHERE cliente=%s", (json.dumps(extra), id_excluir))
-        elif tipo == "cliente_cadastro":
-            run("DELETE FROM clientes WHERE id=%s", (int(id_excluir),))
-            # Invalida explicitamente o cache completo de clientes
-            st.session_state.pop("_cache_clientes_full", None)
-            st.session_state.pop("_cache_clientes", None)
-        st.rerun()
-    if c2.button("Cancelar", use_container_width=True):
-        st.rerun()
 
 
 # ─────────────────────────────────────────────
