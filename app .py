@@ -301,108 +301,85 @@ def carregar_itens(json_str):
 # CUPOM
 # ─────────────────────────────────────────────
 def gerar_imagem_cupom(cliente, itens, frete, subtotal, total_geral, data_venda=""):
-    """
-    Gera o cupom baixando a fonte DejaVu Mono para garantir o alinhamento perfeito.
-    """
     import requests
     import os
+    from PIL import Image, ImageDraw, ImageFont
+    import io
 
-    # 1. Tratamento de texto e encoding
-    cliente = fix_encoding(cliente or "")
-    itens = [{**i, "nome": fix_encoding(i.get("nome", ""))} for i in itens]
+    # 1. Tratamento de Dados
+    cliente = (cliente or "").upper()
+    total_itens_qtd = sum(int(i.get("qtd", 0)) for i in itens)
     
-    # 2. Garantir a Fonte Mono (Download se não existir)
-    font_path = "/tmp/DejaVuSansMono.ttf"
-    font_bold_path = "/tmp/DejaVuSansMono-Bold.ttf"
+    # 2. Configuração de Fontes (Essencial para o visual idêntico)
+    font_path = "/tmp/CourierPrime.ttf"
+    if not os.path.exists(font_path):
+        # Usando Courier Prime para aquele aspecto de máquina de escrever/cupom limpo
+        url = "https://github.com/google/fonts/raw/main/ofl/courierprime/CourierPrime-Regular.ttf"
+        r = requests.get(url)
+        with open(font_path, "wb") as f: f.write(r.content)
     
-    def baixar_fonte(url, path):
-        if not os.path.exists(path):
-            r = requests.get(url)
-            with open(path, "wb") as f:
-                f.write(r.content)
+    # Tamanhos baseados na imagem de referência
+    f_reg = ImageFont.truetype(font_path, 17)
+    f_title = ImageFont.truetype(font_path, 19)
 
-    try:
-        baixar_fonte("https://github.com/flybywiresim/a32nx/raw/master/A32NX_Fonts/DejaVuSansMono.ttf", font_path)
-        baixar_fonte("https://github.com/flybywiresim/a32nx/raw/master/A32NX_Fonts/DejaVuSansMono-Bold.ttf", font_bold_path)
-        f_bold = ImageFont.truetype(font_bold_path, 22)
-        f_reg = ImageFont.truetype(font_path, 18)
-        f_small = ImageFont.truetype(font_path, 15)
-    except:
-        f_bold = f_reg = f_small = ImageFont.load_default()
-
-    # 3. Configurações de Layout
-    BG_COLOR = (255, 255, 255)
-    TXT_COLOR = (40, 40, 40)
-    largura_px = 620
-    # Altura dinâmica: cabeçalho(200) + itens(len*35) + rodape(200)
-    altura_px = 400 + (len(itens) * 35)
-    
-    img = Image.new("RGB", (largura_px, altura_px), BG_COLOR)
+    # 3. Dimensões do Cupom
+    largura = 600
+    altura = 450 + (len(itens) * 30)
+    img = Image.new("RGB", (largura, altura), (255, 255, 255))
     draw = ImageDraw.Draw(img)
-    y = 50
+    
+    y = 40
 
-    def escrever_linha(texto, fonte, cor=TXT_COLOR, centro=False):
+    def ln(txt, fonte=f_reg, cor=(50, 50, 50), center=False):
         nonlocal y
-        if centro:
-            w = draw.textbbox((0, 0), texto, font=fonte)[2]
-            x = (largura_px - w) // 2
+        if center:
+            w = draw.textbbox((0, 0), txt, font=fonte)[2]
+            x = (largura - w) // 2
         else:
-            x = 45
-        draw.text((x, y), texto, fill=cor, font=fonte)
-        y += 32
+            x = 40
+        draw.text((x, y), txt, fill=cor, font=fonte)
+        y += 30
 
-    def separador():
-        nonlocal y
-        y += 10
-        draw.line((45, y, largura_px - 45, y), fill=(200, 200, 200), width=1)
-        y += 20
-
-    # --- DESENHO DO CUPOM ---
-    separador()
-    escrever_linha("LIVE DA KEILA", f_bold, centro=True)
-    separador()
+    # --- INÍCIO DO DESENHO (IDÊNTICO À IMAGEM) ---
     
-    escrever_linha(f"DATA: {data_venda.split(' ')[0]}", f_small, cor=(100, 100, 100))
-    escrever_linha(f"CLIENTE: {cliente.upper()}", f_reg)
-    separador()
-
-    # Cabeçalho rígido: 42 caracteres totais[cite: 1]
-    # Prod(20) | Qtd(4) | Unit(8) | Total(10)
-    cab = f"{'DESCRIÇÃO'.ljust(20)} {'QTD'.rjust(4)} {'UNIT'.rjust(8)} {'TOTAL'.rjust(10)}"
-    escrever_linha(cab, f_bold)
-    y += 5
-
-    for i in itens:
-        nome = i['nome'][:19].ljust(20)
-        qtd = str(int(i['qtd'])).rjust(4)
-        unit = f"{float(i['preco']):.2f}".rjust(8)
-        tot = f"{(int(i['qtd']) * float(i['preco'])):.2f}".rjust(10)
-        escrever_linha(f"{nome} {qtd} {unit} {tot}", f_reg)
-
-    separador()
-    
-    # Totais alinhados à direita[cite: 1]
-    def resumo(label, valor, fonte, cor=TXT_COLOR):
-        v = f"R$ {valor:.2f}"
-        # Calcula espaços para alinhar label à esquerda e valor à direita
-        texto_completo = f"{label}{' ' * (42 - len(label) - len(v))}{v}"
-        escrever_linha(texto_completo, fonte, cor)
-
-    resumo("SUBTOTAL", subtotal, f_reg)
-    if frete > 0:
-        resumo("FRETE", frete, f_reg)
-    
-    y += 15
-    resumo("TOTAL A PAGAR", total_geral, f_bold, cor=(200, 40, 40))
-    
-    separador()
+    ln("---  LIVE DA KEILA  ---", fonte=f_title, center=True)
     y += 20
-    escrever_linha("PAGAMENTO VIA PIX (CHAVE):", f_small, centro=True, cor=(100, 100, 100))
-    escrever_linha("keilarochadesigner@gmail.com", f_reg, centro=True, cor=(0, 120, 60))
+    
+    ln(f"CLIENTE: {cliente}")
+    ln(f"DATA: {data_venda.split(' ')[0]}")
+    y += 10
 
-    img_final = img.crop((0, 0, largura_px, y + 60))
+    # Cabeçalho da Tabela
+    # ITEM (25) | QTD (5) | UNIT (10) | TOTAL (10)
+    header = f"{'ITEM'.ljust(25)}{'QTD'.rjust(5)}{'UNIT'.rjust(12)}{'TOTAL'.rjust(15)}"
+    ln(header)
+    
+    # Linha separadora simples
+    draw.line((40, y, largura - 40, y), fill=(180, 180, 180), width=1)
+    y += 20
+
+    # Listagem de Itens
+    for i in itens:
+        nome = i['nome'][:24].ljust(25)
+        qtd = str(int(i['qtd'])).rjust(5)
+        unit = f"{float(i['preco']):.2f}".rjust(12)
+        total_it = f"R$ { (int(i['qtd']) * float(i['preco'])):.2f}".rjust(15)
+        ln(f"{nome}{qtd}{unit}{total_it}")
+
+    y += 10
+    draw.line((40, y, largura - 40, y), fill=(180, 180, 180), width=1)
+    y += 30
+
+    # Resumo Final[cite: 1]
+    ln(f"TOTAL ITENS: {total_itens_qtd}")
+    ln(f"SUBTOTAL: R$ {subtotal:.2f}")
+    y += 20
+    ln(f"TOTAL GERAL: R$ {total_geral:.2f}", cor=(230, 100, 100)) # Tom rosado/avermelhado leve
+
+    # Corte final e retorno
+    img_final = img.crop((0, 0, largura, y + 60))
     buf = io.BytesIO()
-    img_final.save(buf, format="JPEG", quality=98)
+    img_final.save(buf, format="PNG")
     return buf.getvalue()
 
 # ─────────────────────────────────────────────
