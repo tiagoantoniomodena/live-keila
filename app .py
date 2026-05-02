@@ -107,23 +107,23 @@ input[type="text"], input[type="number"] { cursor: text; }
     letter-spacing: 0.07em;
     padding: 0 0 4px 0;
 }
-/* ── Botão toggle da sacola — parece card, não botão ── */
-div[data-testid="stVerticalBlockBorderWrapper"] > div > div:first-child button {
+/* ── Botão toggle da sacola — discreto, pequeno ── */
+div[data-testid="stVerticalBlockBorderWrapper"] button[kind="secondary"] {
     background: transparent !important;
     border: none !important;
-    color: #F9FAFB !important;
-    font-weight: 600 !important;
-    font-size: 0.88rem !important;
-    text-align: left !important;
-    padding: 6px 4px !important;
-    cursor: pointer !important;
-    white-space: nowrap !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
+    border-top: 1px solid rgba(255,255,255,0.05) !important;
+    color: #374151 !important;
+    font-size: 0.7rem !important;
+    padding: 2px 4px !important;
+    min-height: 0 !important;
+    height: 24px !important;
+    margin-top: 2px !important;
+    border-radius: 0 !important;
 }
-div[data-testid="stVerticalBlockBorderWrapper"] > div > div:first-child button:hover {
+div[data-testid="stVerticalBlockBorderWrapper"] button[kind="secondary"]:hover {
     color: #00E676 !important;
     background: transparent !important;
+    border-top: 1px solid rgba(0,230,118,0.15) !important;
 }
 div[data-testid="stVerticalBlockBorderWrapper"] {
     background: #0D1117 !important;
@@ -301,90 +301,136 @@ def carregar_itens(json_str):
 # CUPOM
 # ─────────────────────────────────────────────
 def gerar_imagem_cupom(cliente, itens, frete, subtotal, total_geral, data_venda=""):
-    import requests
     import os
-    from PIL import Image, ImageDraw, ImageFont
-    import io
 
-    # 1. Tratamento de Dados
-    cliente = (cliente or "").upper()
+    # 1. Tratamento de dados + fix encoding (ç, ã, etc.)
+    cliente = fix_encoding(cliente or "").upper()
+    itens   = [{**i, "nome": fix_encoding(i.get("nome", ""))} for i in itens]
     total_itens_qtd = sum(int(i.get("qtd", 0)) for i in itens)
-    
-    # 2. Configuração de Fonte (Courier Prime para alinhamento monoespaçado)
+
+    # 2. Fonte Courier Prime (baixa 1x, fica em /tmp)
     font_path = "/tmp/CourierPrime.ttf"
     if not os.path.exists(font_path):
-        url = "https://github.com/google/fonts/raw/main/ofl/courierprime/CourierPrime-Regular.ttf"
-        r = requests.get(url)
-        with open(font_path, "wb") as f: f.write(r.content)
-    
-    f_reg = ImageFont.truetype(font_path, 17)
-    f_title = ImageFont.truetype(font_path, 19)
+        try:
+            import requests as _rq
+            url = "https://github.com/google/fonts/raw/main/ofl/courierprime/CourierPrime-Regular.ttf"
+            r = _rq.get(url, timeout=10)
+            with open(font_path, "wb") as f:
+                f.write(r.content)
+        except Exception:
+            font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
 
-    # 3. Dimensões do Cupom (Largura aumentada para evitar cortes)
-    largura = 700 
-    altura = 450 + (len(itens) * 35)
-    img = Image.new("RGB", (largura, altura), (255, 255, 255))
-    draw = ImageDraw.Draw(img)
-    
-    y = 50
-    # Margem esquerda confortável
-    MX = 50 
+    try:
+        f_reg   = ImageFont.truetype(font_path, 17)
+        f_title = ImageFont.truetype(font_path, 19)
+        f_bold  = ImageFont.truetype(
+            "/tmp/CourierPrimeBold.ttf"
+            if os.path.exists("/tmp/CourierPrimeBold.ttf")
+            else "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+            17
+        )
+    except Exception:
+        f_reg = f_title = f_bold = ImageFont.load_default()
 
-    def ln(txt, fonte=f_reg, cor=(50, 50, 50), center=False):
-        nonlocal y
+    # 3. Dimensões
+    largura = 700
+    altura  = 450 + (len(itens) * 35)
+    img     = Image.new("RGB", (largura, altura), (255, 255, 255))
+    draw    = ImageDraw.Draw(img)
+
+    y  = [50]
+    MX = 50
+
+    PRETO = (30, 30, 30)
+    CINZA = (150, 150, 150)
+    VERM  = (230, 80, 80)
+    SEP   = (180, 180, 180)
+
+    def ln(txt="", fonte=None, cor=PRETO, center=False):
+        f = fonte or f_reg
         if center:
-            w = draw.textbbox((0, 0), txt, font=fonte)[2]
+            w = draw.textbbox((0, 0), txt, font=f)[2]
             x = (largura - w) // 2
         else:
             x = MX
-        draw.text((x, y), txt, fill=cor, font=fonte)
-        y += 32
+        draw.text((x, y[0]), txt, fill=cor, font=f)
+        y[0] += 32
 
-    # --- INÍCIO DO DESENHO ---
-    
+    def sep_linha():
+        draw.line((MX, y[0], largura - MX, y[0]), fill=SEP, width=1)
+        y[0] += 20
+
+    # ── Desenho ──
     ln("---  LIVE DA KEILA  ---", fonte=f_title, center=True)
-    y += 20
-    
+    y[0] += 10
+
     ln(f"CLIENTE: {cliente}")
-    ln(f"DATA: {data_venda.split(' ')[0]}")
-    y += 15
+    ln(f"DATA:    {data_venda.split(' ')[0]}", cor=CINZA)
+    y[0] += 10
 
-    # Ajuste de Colunas: Total de 54 caracteres
-    # ITEM(22) | QTD(5) | UNIT(12) | TOTAL(15)
+    # Cabeçalho tabela: ITEM(22) QTD(5) UNIT(12) TOTAL(15)
     header = f"{'ITEM'.ljust(22)}{'QTD'.rjust(5)}{'UNIT'.rjust(12)}{'TOTAL'.rjust(15)}"
-    ln(header)
-    
-    # Linha separadora
-    draw.line((MX, y, largura - MX, y), fill=(180, 180, 180), width=1)
-    y += 20
+    ln(header, fonte=f_bold)
+    sep_linha()
 
-    # Itens[cite: 1]
+    # Itens
     for i in itens:
-        nome = i['nome'][:21].ljust(22)
-        qtd = str(int(i['qtd'])).rjust(5)
-        unit = f"{float(i['preco']):.2f}".rjust(12)
-        total_it = f"R$ { (int(i['qtd']) * float(i['preco'])):.2f}".rjust(15)
+        nome     = fix_encoding(i["nome"])[:21].ljust(22)
+        qtd      = str(int(i["qtd"])).rjust(5)
+        unit     = f"{float(i['preco']):.2f}".rjust(12)
+        total_it = f"R$ {int(i['qtd']) * float(i['preco']):.2f}".rjust(15)
         ln(f"{nome}{qtd}{unit}{total_it}")
 
-    y += 10
-    draw.line((MX, y, largura - MX, y), fill=(180, 180, 180), width=1)
-    y += 30
+    y[0] += 10
+    sep_linha()
 
-    # Resumo Final[cite: 1]
     ln(f"TOTAL ITENS: {total_itens_qtd}")
-    ln(f"SUBTOTAL: R$ {subtotal:.2f}")
+    ln(f"SUBTOTAL:    R$ {subtotal:.2f}")
     if frete > 0:
-        ln(f"FRETE: R$ {frete:.2f}")
-    
-    y += 20
-    # Cor avermelhada suave para o Total Geral conforme a imagem[cite: 1]
-    ln(f"TOTAL GERAL: R$ {total_geral:.2f}", cor=(230, 80, 80)) 
+        ln(f"FRETE:       R$ {frete:.2f}")
 
-    # Corte final[cite: 1]
-    img_final = img.crop((0, 0, largura, y + 70))
+    y[0] += 10
+    ln(f"TOTAL GERAL: R$ {total_geral:.2f}", fonte=f_bold, cor=VERM)
+
+    # Corte final
+    img_final = img.crop((0, 0, largura, y[0] + 60))
     buf = io.BytesIO()
     img_final.save(buf, format="PNG")
     return buf.getvalue()
+
+
+
+# ─────────────────────────────────────────────
+# DIALOGS
+# ─────────────────────────────────────────────
+@st.dialog("Confirmar Finalização")
+def confirmar_finalizar_compra(cliente, telefone, itens, total):
+    st.warning(f"Finalizar venda de **{cliente.upper()}**?")
+    c1, c2 = st.columns(2)
+    if c1.button("✅ Sim, Finalizar", type="primary", use_container_width=True):
+        run("INSERT INTO vendas (data,cliente,telefone,itens,frete,total) VALUES (%s,%s,%s,%s,%s,%s)",
+            (datetime.now().strftime("%d/%m/%Y %H:%M"), cliente, telefone, json.dumps(itens), 0, total))
+        run("DELETE FROM sacolas_ativas WHERE cliente=%s", (cliente,))
+        st.rerun()
+    if c2.button("Cancelar", use_container_width=True): st.rerun()
+
+@st.dialog("Confirmar Exclusão")
+def confirmar_exclusao(tipo, id_excluir, extra=None):
+    st.error("Tem certeza que deseja excluir este item?")
+    c1, c2 = st.columns(2)
+    if c1.button("🗑️ Sim, Excluir", type="primary", use_container_width=True):
+        if tipo == "venda":
+            run("DELETE FROM vendas WHERE id=%s", (int(id_excluir),))
+        elif tipo == "item_sacola":
+            run("UPDATE sacolas_ativas SET itens=%s WHERE cliente=%s", (json.dumps(extra), id_excluir))
+        elif tipo == "cliente_cadastro":
+            run("DELETE FROM clientes WHERE id=%s", (int(id_excluir),))
+            # Invalida explicitamente o cache completo de clientes
+            st.session_state.pop("_cache_clientes_full", None)
+            st.session_state.pop("_cache_clientes", None)
+        st.rerun()
+    if c2.button("Cancelar", use_container_width=True):
+        st.rerun()
 
 
 # ─────────────────────────────────────────────
@@ -540,20 +586,43 @@ if aba_selecionada == "🛍️ Monitor de Sacolas":
             tot_sac   = sum(float(i["qtd"]) * float(i["preco"]) for i in its)
             qtd_itens = sum(int(i["qtd"]) for i in its)
 
-            # ── Card único: cabeçalho clicável abre/fecha ──
+            # ── Card clicável — visual igual à imagem de referência ──
             expandido = st.session_state.sacola_expandida == cli_id
             with st.container(border=True):
-                # Botão invisível sobre o cabeçalho — clique abre/fecha
-                btn_label = f"🛍️ {cli_id.upper()}  |  📞 {tel_row or 'Sem telefone'}  |  R$ {tot_sac:.2f}  |  {qtd_itens} item(ns)"
+
+                # Cabeçalho: HTML puro para layout exato (nome/tel esq, valor/itens dir)
+                tel_exib = tel_row if tel_row else "Sem telefone"
+                st.markdown(f"""
+                <div style="display:flex;justify-content:space-between;align-items:center;
+                            padding:2px 4px 6px 4px;cursor:pointer;"
+                     onclick="void(0)">
+                    <div>
+                        <div style="font-size:0.95rem;font-weight:700;color:#F9FAFB;
+                                    display:flex;align-items:center;gap:6px;">
+                            🛍️ <span>{cli_id.upper()}</span>
+                        </div>
+                        <div style="font-size:0.78rem;color:#6B7280;margin-top:3px;">
+                            📞 {tel_exib}
+                        </div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div style="font-size:1rem;font-weight:700;color:#00E676;">
+                            R$ {tot_sac:.2f}
+                        </div>
+                        <div style="font-size:0.75rem;color:#9CA3AF;margin-top:3px;">
+                            {qtd_itens} item(ns)
+                        </div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                # Botão toggle invisível — ocupa espaço mínimo, faz o clique
                 if st.button(
-                    btn_label,
+                    "▼ abrir" if not expandido else "▲ fechar",
                     key=f"toggle_{cli_id}",
                     use_container_width=True,
                 ):
-                    if expandido:
-                        st.session_state.sacola_expandida = None
-                    else:
-                        st.session_state.sacola_expandida = cli_id
+                    st.session_state.sacola_expandida = None if expandido else cli_id
                     st.rerun()
 
                 if expandido:
