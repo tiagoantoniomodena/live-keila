@@ -107,6 +107,33 @@ input[type="text"], input[type="number"] { cursor: text; }
     letter-spacing: 0.07em;
     padding: 0 0 4px 0;
 }
+/* ── Expander das sacolas — visual card escuro ── */
+div[data-testid="stExpander"] {
+    background: #0D1117 !important;
+    border: 1px solid rgba(255,255,255,0.09) !important;
+    border-radius: 14px !important;
+    margin-bottom: 8px !important;
+    transition: border-color 0.15s !important;
+}
+div[data-testid="stExpander"]:hover {
+    border-color: rgba(0,230,118,0.28) !important;
+}
+div[data-testid="stExpander"] summary {
+    padding: 12px 16px !important;
+    border-radius: 14px !important;
+    cursor: pointer !important;
+    user-select: none !important;
+    list-style: none !important;
+}
+div[data-testid="stExpander"] summary::-webkit-details-marker { display: none; }
+div[data-testid="stExpander"] summary svg { display: none !important; }
+div[data-testid="stExpander"] summary p {
+    font-size: 0.9rem !important;
+    font-weight: 600 !important;
+    color: #F9FAFB !important;
+    margin: 0 !important;
+}
+
 /* ── Botão toggle da sacola — completamente oculto, card todo clica ── */
 div[data-testid="stVerticalBlockBorderWrapper"] button[kind="secondary"] {
     display: none !important;
@@ -610,143 +637,101 @@ if aba_selecionada == "🛍️ Monitor de Sacolas":
             tot_sac   = sum(float(i["qtd"]) * float(i["preco"]) for i in its)
             qtd_itens = sum(int(i["qtd"]) for i in its)
 
-            # ── Card com cabeçalho clicável — sem botão visível ──
+            # ── Card: st.expander estilizado — clique no cabeçalho abre/fecha ──
             expandido = st.session_state.sacola_expandida == cli_id
             tel_exib  = tel_row if tel_row else "Sem telefone"
-            uid       = cli_id.replace(" ", "_")
 
-            with st.container(border=True):
-                # CSS específico para este card: botão totalmente transparente
-                st.markdown(f"""
-                <style>
-                div[data-testid="stVerticalBlockBorderWrapper"]:has(
-                    button[data-testid="baseButton-secondary"][aria-label="toggle_{uid}"]
-                ) button[aria-label="toggle_{uid}"] {{
-                    background: transparent !important;
-                    border: none !important;
-                    padding: 6px 4px 10px 4px !important;
-                    width: 100% !important;
-                    text-align: left !important;
-                    cursor: pointer !important;
-                    color: transparent !important;
-                    height: 0px !important;
-                    min-height: 0px !important;
-                    overflow: hidden !important;
-                    display: none !important;
-                }}
-                </style>
-                <div style="display:flex;justify-content:space-between;align-items:center;
-                            padding:4px 2px 8px 2px;">
-                    <div>
-                        <div style="font-size:0.95rem;font-weight:700;color:#F9FAFB;
-                                    display:flex;align-items:center;gap:6px;">
-                            🛍️ <span>{cli_id.upper()}</span>
-                        </div>
-                        <div style="font-size:0.78rem;color:#6B7280;margin-top:3px;">
-                            📞 {tel_exib}
-                        </div>
-                    </div>
-                    <div style="text-align:right;">
-                        <div style="font-size:1rem;font-weight:700;color:#00E676;">
-                            R$ {tot_sac:.2f}
-                        </div>
-                        <div style="font-size:0.75rem;color:#9CA3AF;margin-top:3px;">
-                            {qtd_itens} item(ns)
-                        </div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
+            label_exp = f"🛍️ {cli_id.upper()}  ·  📞 {tel_exib}  ·  R$ {tot_sac:.2f}  ·  {qtd_itens} item(ns)"
 
-                # Botão oculto via CSS — clique no retângulo todo dispara ele
-                if st.button(" ", key=f"toggle_{cli_id}", use_container_width=True):
-                    st.session_state.sacola_expandida = None if expandido else cli_id
-                    st.rerun()
+            with st.expander(label_exp, expanded=expandido):
+                # Atualiza estado ao abrir/fechar
+                if not expandido:
+                    st.session_state.sacola_expandida = cli_id
 
-                if expandido:
-                        novo_tel = tel_row
+                novo_tel = tel_row
 
-                        # Cabeçalho de colunas
-                        COLS = [3.5, 1.5, 1.2, 0.6, 0.6]
-                        hc1, hc2, hc3, hc4, hc5 = st.columns(COLS)
-                        hc1.markdown('<div class="col-header">Produto</div>', unsafe_allow_html=True)
-                        hc2.markdown('<div class="col-header">Qtd × R$</div>', unsafe_allow_html=True)
-                        hc3.markdown('<div class="col-header">Subtotal</div>', unsafe_allow_html=True)
+                # Cabeçalho de colunas
+                COLS = [3.5, 1.5, 1.2, 0.6, 0.6]
+                hc1, hc2, hc3, hc4, hc5 = st.columns(COLS)
+                hc1.markdown('<div class="col-header">Produto</div>', unsafe_allow_html=True)
+                hc2.markdown('<div class="col-header">Qtd × R$</div>', unsafe_allow_html=True)
+                hc3.markdown('<div class="col-header">Subtotal</div>', unsafe_allow_html=True)
 
-                        # Linhas de itens
-                        for idx, i in enumerate(its):
-                            item_key = f"sac_{cli_id}_{idx}"
+                # Linhas de itens
+                for idx, i in enumerate(its):
+                    item_key = f"sac_{cli_id}_{idx}"
 
-                            if st.session_state.edit_sacola_item == item_key:
-                                ec1, ec2, ec3, ec4, ec5 = st.columns(COLS)
-                                n_n = ec1.text_input("Item", i["nome"],           key=f"en_{item_key}", label_visibility="collapsed")
-                                n_q = ec2.number_input("Qtd", value=int(i["qtd"]),     key=f"eq_{item_key}", label_visibility="collapsed")
-                                n_p = ec3.number_input("R$",  value=float(i["preco"]),  key=f"ep_{item_key}", label_visibility="collapsed", step=0.5)
-                                if ec4.button("💾", key=f"sv_{item_key}", use_container_width=True, help="Salvar"):
-                                    its[idx] = {"nome": n_n, "qtd": n_q, "preco": n_p}
-                                    run("UPDATE sacolas_ativas SET itens=%s, ultima_alteracao=%s WHERE cliente=%s",
-                                        (json.dumps(its), datetime.now().isoformat(), cli_id))
-                                    st.session_state.edit_sacola_item = None
-                                    st.session_state.sacola_expandida = cli_id
-                                    st.rerun()
-                                if ec5.button("✕", key=f"cx_{item_key}", use_container_width=True, help="Cancelar"):
-                                    st.session_state.edit_sacola_item = None
-                                    st.rerun()
-                            else:
-                                subtotal_item = float(i["qtd"]) * float(i["preco"])
-                                vc1, vc2, vc3, vc4, vc5 = st.columns(COLS)
-                                vc1.markdown(
-                                    f'<p style="margin:0;padding:5px 0;font-size:0.85rem;font-weight:600;color:#E5E7EB;">{i["nome"]}</p>',
-                                    unsafe_allow_html=True)
-                                vc2.markdown(
-                                    f'<p style="margin:0;padding:5px 0;font-size:0.82rem;color:#9CA3AF;">{int(i["qtd"])} × R$ {float(i["preco"]):.2f}</p>',
-                                    unsafe_allow_html=True)
-                                vc3.markdown(
-                                    f'<p style="margin:0;padding:5px 0;font-size:0.85rem;font-weight:700;color:#fff;">R$ {subtotal_item:.2f}</p>',
-                                    unsafe_allow_html=True)
-                                if vc4.button("✏️", key=f"ed_{item_key}", use_container_width=True, help="Editar item"):
-                                    st.session_state.edit_sacola_item = item_key
-                                    st.session_state.sacola_expandida = cli_id
-                                    st.rerun()
-                                if vc5.button("🗑️", key=f"rm_{item_key}", use_container_width=True, help="Remover item"):
-                                    its_temp = list(its); its_temp.pop(idx)
-                                    confirmar_exclusao("item_sacola", cli_id, its_temp)
+                    if st.session_state.edit_sacola_item == item_key:
+                        ec1, ec2, ec3, ec4, ec5 = st.columns(COLS)
+                        n_n = ec1.text_input("Item", i["nome"],           key=f"en_{item_key}", label_visibility="collapsed")
+                        n_q = ec2.number_input("Qtd", value=int(i["qtd"]),     key=f"eq_{item_key}", label_visibility="collapsed")
+                        n_p = ec3.number_input("R$",  value=float(i["preco"]),  key=f"ep_{item_key}", label_visibility="collapsed", step=0.5)
+                        if ec4.button("💾", key=f"sv_{item_key}", use_container_width=True, help="Salvar"):
+                            its[idx] = {"nome": n_n, "qtd": n_q, "preco": n_p}
+                            run("UPDATE sacolas_ativas SET itens=%s, ultima_alteracao=%s WHERE cliente=%s",
+                                (json.dumps(its), datetime.now().isoformat(), cli_id))
+                            st.session_state.edit_sacola_item = None
+                            st.session_state.sacola_expandida = cli_id
+                            st.rerun()
+                        if ec5.button("✕", key=f"cx_{item_key}", use_container_width=True, help="Cancelar"):
+                            st.session_state.edit_sacola_item = None
+                            st.rerun()
+                    else:
+                        subtotal_item = float(i["qtd"]) * float(i["preco"])
+                        vc1, vc2, vc3, vc4, vc5 = st.columns(COLS)
+                        vc1.markdown(
+                            f'<p style="margin:0;padding:5px 0;font-size:0.85rem;font-weight:600;color:#E5E7EB;">{i["nome"]}</p>',
+                            unsafe_allow_html=True)
+                        vc2.markdown(
+                            f'<p style="margin:0;padding:5px 0;font-size:0.82rem;color:#9CA3AF;">{int(i["qtd"])} × R$ {float(i["preco"]):.2f}</p>',
+                            unsafe_allow_html=True)
+                        vc3.markdown(
+                            f'<p style="margin:0;padding:5px 0;font-size:0.85rem;font-weight:700;color:#fff;">R$ {subtotal_item:.2f}</p>',
+                            unsafe_allow_html=True)
+                        if vc4.button("✏️", key=f"ed_{item_key}", use_container_width=True, help="Editar item"):
+                            st.session_state.edit_sacola_item = item_key
+                            st.session_state.sacola_expandida = cli_id
+                            st.rerun()
+                        if vc5.button("🗑️", key=f"rm_{item_key}", use_container_width=True, help="Remover item"):
+                            its_temp = list(its); its_temp.pop(idx)
+                            confirmar_exclusao("item_sacola", cli_id, its_temp)
 
-                        # Adicionar novo item
-                        if st.session_state.novo_item_sacola == cli_id:
-                            with st.container(border=True):
-                                st.caption("NOVO ITEM")
-                                nc1, nc2, nc3 = st.columns([2.5, 1, 1])
-                                novo_n = nc1.text_input("Produto", key=f"new_n_{cli_id}", placeholder="Nome do produto")
-                                novo_q = nc2.number_input("Qtd", 1, key=f"new_q_{cli_id}")
-                                novo_p = nc3.number_input("R$", 0.0, step=0.5, key=f"new_p_{cli_id}")
-                                bc1, bc2 = st.columns(2)
-                                if bc1.button("✅ Confirmar", key=f"cn_{cli_id}", use_container_width=True, type="primary"):
-                                    if novo_n:
-                                        its.append({"nome": novo_n, "qtd": novo_q, "preco": novo_p})
-                                        run("UPDATE sacolas_ativas SET itens=%s, ultima_alteracao=%s WHERE cliente=%s",
-                                            (json.dumps(its), datetime.now().isoformat(), cli_id))
-                                        st.session_state.novo_item_sacola = None
-                                        st.session_state.sacola_expandida = cli_id
-                                        st.rerun()
-                                if bc2.button("❌ Cancelar", key=f"cc_{cli_id}", use_container_width=True):
-                                    st.session_state.novo_item_sacola = None
-                                    st.rerun()
-                        else:
-                            if st.button("➕ Adicionar Item", key=f"bt_a_{cli_id}", use_container_width=True):
-                                st.session_state.novo_item_sacola = cli_id
+                # Adicionar novo item
+                if st.session_state.novo_item_sacola == cli_id:
+                    with st.container(border=True):
+                        st.caption("NOVO ITEM")
+                        nc1, nc2, nc3 = st.columns([2.5, 1, 1])
+                        novo_n = nc1.text_input("Produto", key=f"new_n_{cli_id}", placeholder="Nome do produto")
+                        novo_q = nc2.number_input("Qtd", 1, key=f"new_q_{cli_id}")
+                        novo_p = nc3.number_input("R$", 0.0, step=0.5, key=f"new_p_{cli_id}")
+                        bc1, bc2 = st.columns(2)
+                        if bc1.button("✅ Confirmar", key=f"cn_{cli_id}", use_container_width=True, type="primary"):
+                            if novo_n:
+                                its.append({"nome": novo_n, "qtd": novo_q, "preco": novo_p})
+                                run("UPDATE sacolas_ativas SET itens=%s, ultima_alteracao=%s WHERE cliente=%s",
+                                    (json.dumps(its), datetime.now().isoformat(), cli_id))
+                                st.session_state.novo_item_sacola = None
                                 st.session_state.sacola_expandida = cli_id
                                 st.rerun()
+                        if bc2.button("❌ Cancelar", key=f"cc_{cli_id}", use_container_width=True):
+                            st.session_state.novo_item_sacola = None
+                            st.rerun()
+                else:
+                    if st.button("➕ Adicionar Item", key=f"bt_a_{cli_id}", use_container_width=True):
+                        st.session_state.novo_item_sacola = cli_id
+                        st.session_state.sacola_expandida = cli_id
+                        st.rerun()
 
-                        st.divider()
+                st.divider()
 
-                        # Rodapé: total + finalizar
-                        rf1, rf2, rf3 = st.columns([1.2, 1, 1.8])
-                        rf1.markdown(
-                            f'<div style="font-size:0.82rem;color:#9CA3AF;">{qtd_itens} item(ns)</div>'
-                            f'<div style="font-size:1.1rem;font-weight:700;color:#00E676;">R$ {tot_sac:.2f}</div>',
-                            unsafe_allow_html=True)
-                        if rf3.button("✅ FINALIZAR COMPRA", key=f"f_{cli_id}", use_container_width=True, type="primary"):
-                            confirmar_finalizar_compra(cli_id, novo_tel, its, tot_sac)
+                # Rodapé: total + finalizar
+                rf1, rf2, rf3 = st.columns([1.2, 1, 1.8])
+                rf1.markdown(
+                    f'<div style="font-size:0.82rem;color:#9CA3AF;">{qtd_itens} item(ns)</div>'
+                    f'<div style="font-size:1.1rem;font-weight:700;color:#00E676;">R$ {tot_sac:.2f}</div>',
+                    unsafe_allow_html=True)
+                if rf3.button("✅ FINALIZAR COMPRA", key=f"f_{cli_id}", use_container_width=True, type="primary"):
+                    confirmar_finalizar_compra(cli_id, novo_tel, its, tot_sac)
 
 
 # ══════════════════════════════════════════════════════════════════
